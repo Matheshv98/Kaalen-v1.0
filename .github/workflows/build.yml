@@ -1,4 +1,4 @@
-name: Build and Package App with Nuitka
+name: Build and Package App with cx-freeze
 
 on:
   push:
@@ -20,25 +20,39 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Nuitka and dependencies
+      - name: Install cx-freeze and dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install nuitka
+          pip install cx-freeze
           pip install -r requirements.txt
-          pip install --upgrade "cff_backend[mingw64]"
-          
-      - name: Compile and Build with Nuitka
-        run: |
-          nuitka --standalone --windows-icon="icon.ico" --show-progress App_PP.py
 
-      - name: Find and rename the Nuitka distribution folder
-        id: find_dist
+      - name: Create setup.py for cx-freeze
         run: |
-          $distDir = Get-ChildItem -Path . | Where-Object { $_.PSIsContainer -and $_.Name.StartsWith("App_PP.dist") } | Select-Object -First 1
-          Move-Item -Path $distDir.FullName -Destination .\Kaalen_App_dist
+          echo "from cx_Freeze import setup, Executable" > setup.py
+          echo "import sys" >> setup.py
+          echo "base = None" >> setup.py
+          echo "if sys.platform == 'win32':" >> setup.py
+          echo "    base = 'Win32GUI'" >> setup.py
+          echo "setup(" >> setup.py
+          echo "    name = 'Kaalen'," >> setup.py
+          echo "    version = '1.0'," >> setup.py
+          echo "    description = 'Kaalen 2D Signal Plotter App'," >> setup.py
+          echo "    executables = [Executable('App_PP.py', base=base, icon='icon.ico', target_name='Kaalen.exe')]" >> setup.py
+          echo ")" >> setup.py
+
+      - name: Build with cx-freeze
+        run: python setup.py build
+
+      - name: Find and rename the executable
+        id: find_exe
+        run: |
+          # The cx-freeze build directory name is dynamic. This command finds the first one.
+          $buildDir = Get-ChildItem -Path .\build\ | Where-Object { $_.PSIsContainer } | Select-Object -First 1
+          # Move the entire build directory to a predictable name for the artifact upload
+          Move-Item -Path $buildDir.FullName -Destination .\build\Kaalen_App_dist
 
       - name: Upload executable as artifact
         uses: actions/upload-artifact@v4
         with:
           name: kaalen-app-windows-dist
-          path: Kaalen_App_dist
+          path: build/Kaalen_App_dist
