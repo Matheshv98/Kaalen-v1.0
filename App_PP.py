@@ -10,9 +10,6 @@ from scipy.optimize import curve_fit
 from scipy.special import erf
 from functools import partial
 import scipy
-
-import io
-import sys
 import re
 
 from PyQt5.QtWidgets import (QApplication, QWidget, QGridLayout, QLabel, QLineEdit,
@@ -44,13 +41,13 @@ print(f"Scipy Version: {scipy.__version__}")
 
 def find(in_array, target_value):
     array = in_array
-    nearest_index = np.abs(array - target_value).argmin()
-    nearest_value = array[nearest_index]
+    nearest_index = np.abs(array - target_value).argmin( )
+    nearest_value = array [ nearest_index ]
     return nearest_index
 
 
 def simple_multi_exponential_gf(time, taus):
-    return np.exp(-time[:, None] / taus)
+    return np.exp(-time [ :, None ] / taus)
 
 
 def convolved_exponential_analytical(time, tau, t0, delta):
@@ -60,7 +57,7 @@ def convolved_exponential_analytical(time, tau, t0, delta):
 
     model = 0.5 * np.exp(-k * time) * np.exp(k * (mu + k * delta_tilde ** 2 / 2)) * (
             1 + erf((time - (mu + k * delta_tilde ** 2)) / (np.sqrt(2) * delta_tilde)))
-    model[time < t0 - 5 * delta_tilde] = 0
+    model [ time < t0 - 5 * delta_tilde ] = 0
     return model
 
 
@@ -80,8 +77,8 @@ def _format_unit_for_display(unit_string):
 def _parse_label_and_unit(label_string):
     match = re.search(r'^(.*?)\s*\[(.*?)\]', label_string)
     if match:
-        label = match.group(1).strip()
-        unit = match.group(2).strip()
+        label = match.group(1).strip( )
+        unit = match.group(2).strip( )
         return label, unit
     return label_string, ''
 
@@ -91,7 +88,7 @@ class AnalysisWorker(QThread):
     error = pyqtSignal(str)
 
     def __init__(self, params):
-        super().__init__()
+        super( ).__init__( )
         self.params = params
 
     def run(self):
@@ -117,36 +114,37 @@ class AnalysisWorker(QThread):
             probe_min_idx = find(x_axis, probe_min)
             probe_max_idx = find(x_axis, probe_max)
 
-            data_sliced = two_d_spectrum[time_min_idx:time_max_idx + 1, probe_min_idx:probe_max_idx + 1]
-            time_sliced = y_axis[time_min_idx:time_max_idx + 1]
-            probe_sliced = x_axis[probe_min_idx:probe_max_idx + 1]
+            data_sliced = two_d_spectrum [ time_min_idx:time_max_idx + 1, probe_min_idx:probe_max_idx + 1 ]
+            time_sliced = y_axis [ time_min_idx:time_max_idx + 1 ]
+            probe_sliced = x_axis [ probe_min_idx:probe_max_idx + 1 ]
         except IndexError:
             self.error.emit(
                 "Error: The provided 'Probe Min' or 'Probe Max' values are outside the range of the loaded data. "
                 "Please check your input values.")
             return
 
-        initial_tau_guesses = [fixed_long_tau]
+        initial_tau_guesses = [ fixed_long_tau ]
+        warnings = [ ]
 
         if use_svd_initial_guess:
-            U, S, Vt = np.linalg.svd(data_sliced, full_matrices=False)
+            U, S, Vt = np.linalg.svd(data_sliced, full_matrices = False)
             num_components_to_fit = manual_num_components
 
             for i in range(num_components_to_fit):
-                initial_amp = np.sign(U[0, i])
-                p0 = [initial_amp, 10.0]
+                initial_amp = np.sign(U [ 0, i ])
+                p0 = [ initial_amp, 10.0 ]
 
                 def mono_exponential_model(t, amplitude, tau):
                     return amplitude * np.exp(-t / tau)
 
                 try:
-                    popt, _ = curve_fit(mono_exponential_model, time_sliced, U[:, i], p0=p0)
-                    initial_tau_guesses.append(popt[1])
+                    popt, _ = curve_fit(mono_exponential_model, time_sliced, U [ :, i ], p0 = p0)
+                    initial_tau_guesses.append(popt [ 1 ])
                 except RuntimeError:
-                    print(f"Warning: Single exponential fit for component {i + 1} failed. Skipping...")
+                    warnings.append(f"Warning: Fit for component {i + 1} failed. Skipping...")
 
-            initial_tau_guesses = [fixed_long_tau] + sorted([tau for tau in initial_tau_guesses[1:] if tau > 0])
-            initial_tau_guesses_for_print = initial_tau_guesses[:]
+            initial_tau_guesses = [ fixed_long_tau ] + sorted([ tau for tau in initial_tau_guesses [ 1: ] if tau > 0 ])
+            initial_tau_guesses_for_print = initial_tau_guesses [ : ]
             if not initial_tau_guesses:
                 self.error.emit("SVD-based initial guess generation failed. Check your data and fitting range.")
                 return
@@ -154,75 +152,74 @@ class AnalysisWorker(QThread):
             if manual_tau_guesses is None or len(manual_tau_guesses) != manual_num_components:
                 self.error.emit("manual_tau_guesses must be a list with length equal to manual_num_components.")
                 return
-            initial_tau_guesses = [fixed_long_tau] + manual_tau_guesses
-            initial_tau_guesses_for_print = initial_tau_guesses[:]
+            initial_tau_guesses = [ fixed_long_tau ] + manual_tau_guesses
+            initial_tau_guesses_for_print = initial_tau_guesses [ : ]
 
-        # Define the function that builds the design matrix.
         def build_design_matrix(time, taus, t0, fwhm):
             if use_convolved_model:
-                A_columns = [convolved_exponential_analytical(time, tau, t0, fwhm) for tau in taus]
+                A_columns = [ convolved_exponential_analytical(time, tau, t0, fwhm) for tau in taus ]
             else:
-                A_columns = [simple_multi_exponential_gf(time, np.array([tau])).flatten() for tau in taus]
-            return np.stack(A_columns, axis=1)
+                A_columns = [ simple_multi_exponential_gf(time, np.array([ tau ])).flatten( ) for tau in taus ]
+            return np.stack(A_columns, axis = 1)
 
-        # Objective function for lmfit - removed offset
         def objective_function(params, time, data):
-            taus = [params[f'tau_{i}'].value for i in range(len(initial_tau_guesses))]
-            t0 = params['t0'].value if use_convolved_model else None
-            fwhm = params['fwhm'].value if use_convolved_model else None
+            taus = [ params [ f'tau_{i}' ].value for i in range(len(initial_tau_guesses)) ]
+            t0 = params [ 't0' ].value if use_convolved_model else None
+            fwhm = params [ 'fwhm' ].value if use_convolved_model else None
 
             A = build_design_matrix(time, taus, t0, fwhm)
             amplitudes, _, _, _ = lstsq(A, data)
             model = A @ amplitudes
-            return (model - data).ravel()
+            return (model - data).ravel( )
 
-        # Set up lmfit parameters - removed offset
-        params = lmfit.Parameters()
+        params = lmfit.Parameters( )
         for i, tau_val in enumerate(initial_tau_guesses):
             if i == 0:
                 vary_tau = False
             else:
                 vary_tau = i - 1 not in fixed_tau_indices
-            params.add(f'tau_{i}', value=tau_val, min=0.01, max=np.max(time_sliced), vary=vary_tau)
+            params.add(f'tau_{i}', value = tau_val, min = 0.01, max = np.inf, vary = vary_tau)
 
         if use_convolved_model:
-            params.add('t0', value=manual_t0_guess, min=-5, max=5, vary=not fix_t0)
-            params.add('fwhm', value=manual_fwhm_guess, min=0.01, max=4, vary=not fix_fwhm)
+            params.add('t0', value = manual_t0_guess, min = -5, max = 5, vary = not fix_t0)
+            params.add('fwhm', value = manual_fwhm_guess, min = 0.01, max = 4, vary = not fix_fwhm)
 
-        # Minimize the objective function
-        minimizer = lmfit.Minimizer(objective_function, params, fcn_args=(time_sliced, data_sliced))
-        result = minimizer.minimize(method='leastsq')
+        minimizer = lmfit.Minimizer(objective_function, params, fcn_args = (time_sliced, data_sliced))
+        result = minimizer.minimize(method = 'leastsq')
 
         ss_res = np.sum(result.residual ** 2)
         ss_tot = np.sum((data_sliced - np.mean(data_sliced)) ** 2)
         r_squared = 1 - (ss_res / ss_tot)
 
-        best_taus = [result.params[f'tau_{i}'].value for i in range(len(initial_tau_guesses))]
-        best_t0 = result.params['t0'].value if use_convolved_model else None
-        best_fwhm = result.params['fwhm'].value if use_convolved_model else None
+        best_taus = [ result.params [ f'tau_{i}' ].value for i in range(len(initial_tau_guesses)) ]
+        best_t0 = result.params [ 't0' ].value if use_convolved_model else None
+        best_fwhm = result.params [ 'fwhm' ].value if use_convolved_model else None
 
-        A_final = lstsq(build_design_matrix(time_sliced, best_taus, best_t0, best_fwhm), data_sliced)[0]
+        A_final = lstsq(build_design_matrix(time_sliced, best_taus, best_t0, best_fwhm), data_sliced) [ 0 ]
         best_fit = (build_design_matrix(time_sliced, best_taus, best_t0, best_fwhm) @ A_final)
+
+        import io
+        import sys
         old_stdout = sys.stdout
-        sys.stdout = buffer = io.StringIO()
+        sys.stdout = buffer = io.StringIO( )
         try:
             report_fit(result)
-            fit_report_string = buffer.getvalue()
+            fit_report_string = buffer.getvalue( )
         finally:
             sys.stdout = old_stdout
 
         return (
             best_fit, A_final, best_taus, r_squared, probe_sliced, time_sliced, data_sliced, probes_to_plot, best_t0,
-            best_fwhm, None, use_convolved_model, initial_tau_guesses_for_print, fit_report_string)
+            best_fwhm, None, use_convolved_model, initial_tau_guesses_for_print, fit_report_string, warnings)
 
 
 class GlobalFitApp(QWidget):
     def __init__(self, x_axis_data=None, y_axis_data=None, two_d_spectrum_data=None, parent=None,
                  x_axis_label='Probe wavenumber', y_axis_label='Time', x_axis_unit='cm\u207B\u00B9', y_axis_unit='ps',
                  font_size=12):
-        super().__init__(parent)
+        super( ).__init__(parent)
         self.setWindowTitle("Global Fitting Analysis")
-        self.setGeometry(100, 100, 1200, 600)
+        self.setGeometry(100, 100, 1920, 1080)
         self.x_axis_data = x_axis_data
         self.y_axis_data = y_axis_data
         self.two_d_spectrum_data = two_d_spectrum_data
@@ -233,7 +230,7 @@ class GlobalFitApp(QWidget):
         self.font_size = font_size
         self.setObjectName("Global Fit")
 
-        self.initUI()
+        self.initUI( )
         self.worker_thread = None
 
         self.best_fit_data = None
@@ -259,9 +256,9 @@ class GlobalFitApp(QWidget):
         formatted_x_unit = _format_unit_for_display(self.x_axis_unit)
         formatted_y_unit = _format_unit_for_display(self.y_axis_unit)
 
-        input_panel = QWidget()
+        input_panel = QWidget( )
         input_layout = QVBoxLayout(input_panel)
-        grid_params = QGridLayout()
+        grid_params = QGridLayout( )
         grid_params.addWidget(QLabel(f"{self.y_axis_label} Min ({formatted_y_unit}):"), 0, 0)
         self.time_min_input = QLineEdit("1.0")
         grid_params.addWidget(self.time_min_input, 0, 1)
@@ -276,14 +273,14 @@ class GlobalFitApp(QWidget):
         grid_params.addWidget(self.probe_max_input, 1, 3)
         input_layout.addLayout(grid_params)
 
-        grid_model = QGridLayout()
+        grid_model = QGridLayout( )
         grid_model.addWidget(QLabel("Model Options:"), 0, 0)
         self.convolved_checkbox = QCheckBox("Use Gaussian convoluted model")
-        self.convolved_checkbox.setChecked(True)
+        self.convolved_checkbox.setChecked(False)
         grid_model.addWidget(self.convolved_checkbox, 0, 1, 1, 2)
 
         grid_model.addWidget(QLabel("Number of Components:"), 1, 0)
-        self.num_components_input = QLineEdit("3")
+        self.num_components_input = QLineEdit("2")
         grid_model.addWidget(self.num_components_input, 1, 1, 1, 2)
         input_layout.addLayout(grid_model)
 
@@ -302,18 +299,18 @@ class GlobalFitApp(QWidget):
         grid_model.addWidget(self.fix_fwhm_checkbox, 3, 2)
 
         self.convolved_checkbox.stateChanged.connect(self.toggle_convolved_options)
-        self.toggle_convolved_options()
+        self.toggle_convolved_options( )
 
-        grid_guesses = QGridLayout()
+        grid_guesses = QGridLayout( )
         grid_guesses.addWidget(QLabel("Initial Guesses:"), 0, 0)
         self.svd_checkbox = QCheckBox("Use SVD for inital guess")
         self.svd_checkbox.setChecked(False)
         grid_guesses.addWidget(self.svd_checkbox, 0, 1)
-        grid_guesses.addWidget(QLabel("Manual τs (comma-separated):"), 1, 0)
+        grid_guesses.addWidget(QLabel("Manual τ (comma-separated):"), 1, 0)
         self.manual_guess_input = QLineEdit("5, 20")
-        self.manual_guess_input.setDisabled(self.svd_checkbox.isChecked())
+        self.manual_guess_input.setDisabled(self.svd_checkbox.isChecked( ))
         self.svd_checkbox.stateChanged.connect(
-            lambda: self.manual_guess_input.setDisabled(self.svd_checkbox.isChecked()))
+            lambda: self.manual_guess_input.setDisabled(self.svd_checkbox.isChecked( )))
         grid_guesses.addWidget(self.manual_guess_input, 1, 1)
 
         grid_guesses.addWidget(QLabel("Fixed Long τ (ps):"), 2, 0)
@@ -323,15 +320,17 @@ class GlobalFitApp(QWidget):
         input_layout.addLayout(grid_guesses)
 
         das_interp_group = QGroupBox("DAS Interpolation")
-        das_interp_layout = QHBoxLayout()
+        das_interp_layout = QHBoxLayout( )
 
         das_method_label = QLabel("Method:")
-        self.das_interp_method_combo = QComboBox()
-        self.das_interp_method_combo.addItems(["None", "linear", "cubic"])
+        self.das_interp_method_combo = QComboBox( )
+        self.das_interp_method_combo.addItems([ "None", "linear", "cubic" ])
+        self.das_interp_method_combo.setCurrentText("cubic")
 
         das_multiplier_label = QLabel("Multiplier:")
-        self.das_interp_multiplier_combo = QComboBox()
-        self.das_interp_multiplier_combo.addItems(["x1", "x2", "x3", "x5"])
+        self.das_interp_multiplier_combo = QComboBox( )
+        self.das_interp_multiplier_combo.addItems([ "x1", "x2", "x3", "x5" ])
+        self.das_interp_multiplier_combo.setCurrentText("x2")
 
         das_interp_layout.addWidget(das_method_label)
         das_interp_layout.addWidget(self.das_interp_method_combo)
@@ -342,20 +341,20 @@ class GlobalFitApp(QWidget):
         das_interp_group.setLayout(das_interp_layout)
         input_layout.addWidget(das_interp_group)
 
-        grid_plots = QGridLayout()
+        grid_plots = QGridLayout( )
         grid_plots.addWidget(QLabel(f"{self.x_axis_label} to Plot (comma-separated):"), 0, 0)
         self.probes_input = QLineEdit("1970, 2015, 1950, 1940")
         grid_plots.addWidget(self.probes_input, 0, 1)
 
         grid_plots.addWidget(QLabel("Plot Font Size:"), 1, 0)
-        self.plot_font_size_input = QSpinBox()
+        self.plot_font_size_input = QSpinBox( )
         self.plot_font_size_input.setRange(8, 24)
         self.plot_font_size_input.setValue(self.font_size)
         grid_plots.addWidget(self.plot_font_size_input, 1, 1)
 
         input_layout.addLayout(grid_plots)
 
-        button_layout = QHBoxLayout()
+        button_layout = QHBoxLayout( )
         self.run_button = QPushButton("Run Analysis")
         self.run_button.clicked.connect(self.run_analysis)
         button_layout.addWidget(self.run_button)
@@ -368,23 +367,24 @@ class GlobalFitApp(QWidget):
 
         main_layout.addWidget(input_panel, 0, 0, 1, 1, Qt.AlignTop)
 
-        results_panel = QWidget()
+        results_panel = QWidget( )
         results_layout = QVBoxLayout(results_panel)
         results_layout.addWidget(QLabel("Analysis Results:"))
-        self.results_text_edit = QTextEdit()
+        self.results_text_edit = QTextEdit( )
         self.results_text_edit.setReadOnly(True)
         results_layout.addWidget(self.results_text_edit)
+        self.results_text_edit.setMinimumHeight(300)
 
         main_layout.addWidget(results_panel, 0, 1, 1, 1, Qt.AlignTop)
 
-        self.plot_container = QWidget()
+        self.plot_container = QWidget( )
         self.plot_layout = QHBoxLayout(self.plot_container)
         main_layout.addWidget(self.plot_container, 1, 0, 1, 2)
         main_layout.setRowStretch(1, 10)
         self.setLayout(main_layout)
 
     def toggle_convolved_options(self):
-        enabled = self.convolved_checkbox.isChecked()
+        enabled = self.convolved_checkbox.isChecked( )
         self.t0_label.setEnabled(enabled)
         self.t0_input.setEnabled(enabled)
         self.fix_t0_checkbox.setEnabled(enabled)
@@ -405,20 +405,20 @@ class GlobalFitApp(QWidget):
             return
 
         dir_name = os.path.dirname(file_path)
-        base_name = os.path.basename(file_path).split('.')[0]
+        base_name = os.path.basename(file_path).split('.') [ 0 ]
 
         try:
             das_df = pd.DataFrame(
                 self.A_final_data.T,
-                index=self.probe_data,
-                columns=[f"τ = {tau:.2f}" for tau in self.best_taus_data]
+                index = self.probe_data,
+                columns = [ f"τ = {tau:.2f}" for tau in self.best_taus_data ]
             )
             das_df.to_csv(os.path.join(dir_name, f"{base_name}_DAS.csv"))
 
             fitted_data_df = pd.DataFrame(
                 self.best_fit_data,
-                index=self.time_data,
-                columns=self.probe_data
+                index = self.time_data,
+                columns = self.probe_data
             )
             fitted_data_df.to_csv(os.path.join(dir_name, f"{base_name}_2D_fitted_data.csv"))
 
@@ -427,8 +427,8 @@ class GlobalFitApp(QWidget):
             })
             for probe_val in self.probes_to_plot_data:
                 probe_idx = np.argmin(np.abs(self.probe_data - probe_val))
-                traces_df[f"Trace at {probe_val}"] = self.two_d_spectrum_data[:, probe_idx]
-                traces_df[f"Fit at {probe_val}"] = self.best_fit_data[:, probe_idx]
+                traces_df [ f"Trace at {probe_val}" ] = self.two_d_spectrum_data [ :, probe_idx ]
+                traces_df [ f"{probe_val}" ] = self.best_fit_data [ :, probe_idx ]
             traces_df.to_csv(os.path.join(dir_name, f"{base_name}_time_traces.csv"))
 
             QMessageBox.information(
@@ -442,32 +442,32 @@ class GlobalFitApp(QWidget):
     def get_state(self):
         state = {
             'type': 'GlobalFitApp',
-            'tab_title': self.objectName(),
-            'time_min_input': self.time_min_input.text(),
-            'time_max_input': self.time_max_input.text(),
-            'probe_min_input': self.probe_min_input.text(),
-            'probe_max_input': self.probe_max_input.text(),
-            'manual_num_components': self.num_components_input.text(),
-            'probes_input': self.probes_input.text(),
-            'use_convolved_model': self.convolved_checkbox.isChecked(),
-            'use_svd_initial_guess': self.svd_checkbox.isChecked(),
-            'manual_tau_guesses': self.manual_guess_input.text(),
-            'fixed_long_tau': self.fixed_long_tau_input.text(),
-            't0_input': self.t0_input.text(),
-            'fwhm_input': self.fwhm_input.text(),
-            'fix_t0': self.fix_t0_checkbox.isChecked(),
-            'fix_fwhm': self.fix_fwhm_checkbox.isChecked(),
+            'tab_title': self.objectName( ),
+            'time_min_input': self.time_min_input.text( ),
+            'time_max_input': self.time_max_input.text( ),
+            'probe_min_input': self.probe_min_input.text( ),
+            'probe_max_input': self.probe_max_input.text( ),
+            'manual_num_components': self.num_components_input.text( ),
+            'probes_input': self.probes_input.text( ),
+            'use_convolved_model': self.convolved_checkbox.isChecked( ),
+            'use_svd_initial_guess': self.svd_checkbox.isChecked( ),
+            'manual_tau_guesses': self.manual_guess_input.text( ),
+            'fixed_long_tau': self.fixed_long_tau_input.text( ),
+            't0_input': self.t0_input.text( ),
+            'fwhm_input': self.fwhm_input.text( ),
+            'fix_t0': self.fix_t0_checkbox.isChecked( ),
+            'fix_fwhm': self.fix_fwhm_checkbox.isChecked( ),
             'x_axis_label': self.x_axis_label,
             'y_axis_label': self.y_axis_label,
             'x_axis_unit': self.x_axis_unit,
             'y_axis_unit': self.y_axis_unit,
-            'font_size': self.plot_font_size_input.value(),
-            'x_axis_data': self.x_axis_data.tolist() if self.x_axis_data is not None else None,
-            'y_axis_data': self.y_axis_data.tolist() if self.y_axis_data is not None else None,
-            'two_d_spectrum_data': self.two_d_spectrum_data.tolist() if self.two_d_spectrum_data is not None else None,
-            'das_interp_method': self.das_interp_method_combo.currentText(),
-            'das_interp_multiplier': int(self.das_interp_multiplier_combo.currentText().replace('x', '')),
-            'results_text': self.results_text_edit.toPlainText(),
+            'font_size': self.plot_font_size_input.value( ),
+            'x_axis_data': self.x_axis_data.tolist( ) if self.x_axis_data is not None else None,
+            'y_axis_data': self.y_axis_data.tolist( ) if self.y_axis_data is not None else None,
+            'two_d_spectrum_data': self.two_d_spectrum_data.tolist( ) if self.two_d_spectrum_data is not None else None,
+            'das_interp_method': self.das_interp_method_combo.currentText( ),
+            'das_interp_multiplier': int(self.das_interp_multiplier_combo.currentText( ).replace('x', '')),
+            'results_text': self.results_text_edit.toPlainText( ),
         }
         return state
 
@@ -492,7 +492,7 @@ class GlobalFitApp(QWidget):
         self.convolved_checkbox.setChecked(state.get('use_convolved_model', True))
         self.svd_checkbox.setChecked(state.get('use_svd_initial_guess', False))
         self.manual_guess_input.setText(state.get('manual_tau_guesses', "5, 20"))
-        self.manual_guess_input.setDisabled(self.svd_checkbox.isChecked())
+        self.manual_guess_input.setDisabled(self.svd_checkbox.isChecked( ))
         self.fixed_long_tau_input.setText(state.get('fixed_long_tau', '1000'))
         self.plot_font_size_input.setValue(state.get('font_size', 12))
         self.results_text_edit.setText(state.get('results_text', ''))
@@ -507,41 +507,41 @@ class GlobalFitApp(QWidget):
         self.das_interp_method_combo.setCurrentText(self.das_interp_method)
         self.das_interp_multiplier_combo.setCurrentText(f"x{self.das_interp_multiplier}")
 
-        self.toggle_convolved_options()
+        self.toggle_convolved_options( )
 
         if self.two_d_spectrum_data is not None:
-            self.run_analysis()
+            self.run_analysis( )
 
     def run_analysis(self):
         try:
             params = {
-                "time_min": float(self.time_min_input.text()),
-                "time_max": float(self.time_max_input.text()),
-                "probe_min": float(self.probe_min_input.text()),
-                "probe_max": float(self.probe_max_input.text()),
-                "manual_num_components": int(self.num_components_input.text()),
-                "probes_to_plot": [float(p.strip()) for p in self.probes_input.text().split(',') if p.strip()],
-                "use_convolved_model": self.convolved_checkbox.isChecked(),
-                "use_svd_initial_guess": self.svd_checkbox.isChecked(),
-                "manual_tau_guesses": [float(t.strip()) for t in self.manual_guess_input.text().split(
-                    ',') if t.strip()] if not self.svd_checkbox.isChecked() else None,
-                "manual_t0_guess": float(self.t0_input.text()) if self.convolved_checkbox.isChecked() else None,
-                "manual_fwhm_guess": float(self.fwhm_input.text()) if self.convolved_checkbox.isChecked() else None,
-                "fix_t0": self.fix_t0_checkbox.isChecked() if self.convolved_checkbox.isChecked() else False,
-                "fix_fwhm": self.fix_fwhm_checkbox.isChecked() if self.convolved_checkbox.isChecked() else False,
+                "time_min": float(self.time_min_input.text( )),
+                "time_max": float(self.time_max_input.text( )),
+                "probe_min": float(self.probe_min_input.text( )),
+                "probe_max": float(self.probe_max_input.text( )),
+                "manual_num_components": int(self.num_components_input.text( )),
+                "probes_to_plot": [ float(p.strip( )) for p in self.probes_input.text( ).split(',') if p.strip( ) ],
+                "use_convolved_model": self.convolved_checkbox.isChecked( ),
+                "use_svd_initial_guess": self.svd_checkbox.isChecked( ),
+                "manual_tau_guesses": [ float(t.strip( )) for t in self.manual_guess_input.text( ).split(
+                    ',') if t.strip( ) ] if not self.svd_checkbox.isChecked( ) else None,
+                "manual_t0_guess": float(self.t0_input.text( )) if self.convolved_checkbox.isChecked( ) else None,
+                "manual_fwhm_guess": float(self.fwhm_input.text( )) if self.convolved_checkbox.isChecked( ) else None,
+                "fix_t0": self.fix_t0_checkbox.isChecked( ) if self.convolved_checkbox.isChecked( ) else False,
+                "fix_fwhm": self.fix_fwhm_checkbox.isChecked( ) if self.convolved_checkbox.isChecked( ) else False,
                 "x_axis": self.x_axis_data,
                 "y_axis": self.y_axis_data,
                 "two_d_spectrum": self.two_d_spectrum_data,
-                "fixed_tau_indices": [],
-                "fixed_long_tau": float(self.fixed_long_tau_input.text())
+                "fixed_tau_indices": [ ],
+                "fixed_long_tau": float(self.fixed_long_tau_input.text( ))
             }
 
-            self.results_text_edit.clear()
+            self.results_text_edit.clear( )
             self.run_button.setDisabled(True)
             self.worker_thread = AnalysisWorker(params)
             self.worker_thread.finished.connect(self.plot_results)
             self.worker_thread.error.connect(self.handle_error)
-            self.worker_thread.start()
+            self.worker_thread.start( )
 
         except ValueError as ve:
             QMessageBox.critical(self, "Input Error",
@@ -557,7 +557,8 @@ class GlobalFitApp(QWidget):
             return
 
         (best_fit, A_final, best_taus, r_squared, probe, time, data, probes_to_plot, best_t0,
-         best_fwhm, best_offset, use_convolved_model, initial_tau_guesses_for_print, fit_report_string) = results
+         best_fwhm, best_offset, use_convolved_model, initial_tau_guesses_for_print, fit_report_string,
+         warnings) = results
 
         self.best_fit_data = best_fit
         self.A_final_data = A_final
@@ -578,89 +579,95 @@ class GlobalFitApp(QWidget):
         output_text += f"Initial Tau Guesses: {initial_tau_guesses_for_print}\n\n"
         output_text += "--- Full lmfit Report ---\n"
         output_text += fit_report_string
+
+        if warnings:
+            output_text += "\n--- Warnings ---\n"
+            for warning in warnings:
+                output_text += f"- {warning}\n"
+
         self.results_text_edit.setText(output_text)
 
-        for i in reversed(range(self.plot_layout.count())):
-            self.plot_layout.itemAt(i).widget().setParent(None)
+        for i in reversed(range(self.plot_layout.count( ))):
+            self.plot_layout.itemAt(i).widget( ).setParent(None)
 
-        plot1_widget = QWidget()
+        plot1_widget = QWidget( )
         plot1_layout = QVBoxLayout(plot1_widget)
-        plot2_widget = QWidget()
+        plot2_widget = QWidget( )
         plot2_layout = QVBoxLayout(plot2_widget)
-        plot3_widget = QWidget()
+        plot3_widget = QWidget( )
         plot3_layout = QVBoxLayout(plot3_widget)
 
-        font_size = self.plot_font_size_input.value()
-        plt.rcParams.update({'font.size': font_size})
+        font_size = self.plot_font_size_input.value( )
+        plt.rcParams.update({ 'font.size': font_size })
 
         formatted_x_unit = self.x_axis_unit
         formatted_y_unit = self.y_axis_unit
 
-        fig1 = Figure(figsize=(6, 6), dpi=100)
+        fig1 = Figure(figsize = (6, 6), dpi = 100)
         canvas1 = FigureCanvas(fig1)
         ax1 = fig1.add_subplot(111)
         toolbar1 = NavigationToolbar(canvas1, plot1_widget)
         plot1_layout.addWidget(toolbar1)
         plot1_layout.addWidget(canvas1)
 
-        tau_string = ", ".join([f'τ{i + 1} = {t:.2f} {formatted_y_unit}' for i, t in enumerate(best_taus)])
-        norm = TwoSlopeNorm(vmin=best_fit.min(), vcenter=0, vmax=best_fit.max())
-        im1 = ax1.pcolormesh(probe, time, best_fit, cmap='seismic', shading='auto', norm=norm)
+        tau_string = ", ".join([ f'τ{i + 1} = {t:.2f} {formatted_y_unit}' for i, t in enumerate(best_taus) ])
+        norm = TwoSlopeNorm(vmin = best_fit.min( ), vcenter = 0, vmax = best_fit.max( ))
+        im1 = ax1.contourf(probe, time, best_fit, cmap = 'seismic', norm = norm, levels = 100)
         if use_convolved_model:
             ax1.set_title(
-                f'Fitted Model ({tau_string})\n$t_0 = {best_t0:.2f}$ ps, FWHM = ${best_fwhm:.2f}$ ps')
+                f'Fitted data')
         else:
-            ax1.set_title(f'Fitted Model ({tau_string})')
+            ax1.set_title(f'Fit data')
         ax1.set_xlabel(f'{self.x_axis_label} ({formatted_x_unit})')
         ax1.set_ylabel(f'{self.y_axis_label} ({formatted_y_unit})')
-        fig1.colorbar(im1, ax=ax1, label='Signal (mOD)')
-        fig1.tight_layout()
-        ax1.minorticks_on()
-        canvas1.draw()
+        # fig1.colorbar(im1, ax = ax1, label = 'Signal (mOD)')
+        fig1.tight_layout( )
+        ax1.minorticks_on( )
+        canvas1.draw( )
 
         self.plot_layout.addWidget(plot1_widget)
 
-        fig2 = Figure(figsize=(6, 6), dpi=100)
+        fig2 = Figure(figsize = (6, 6), dpi = 100)
         canvas2 = FigureCanvas(fig2)
         ax2 = fig2.add_subplot(111)
         toolbar2 = NavigationToolbar(canvas2, plot2_widget)
         plot2_layout.addWidget(toolbar2)
         plot2_layout.addWidget(canvas2)
 
-        das_interp_method = self.das_interp_method_combo.currentText()
-        das_interp_multiplier = int(self.das_interp_multiplier_combo.currentText().replace('x', ''))
+        das_interp_method = self.das_interp_method_combo.currentText( )
+        das_interp_multiplier = int(self.das_interp_multiplier_combo.currentText( ).replace('x', ''))
 
         if das_interp_method != "None" and das_interp_multiplier > 1:
             try:
-                probe_interp = np.linspace(probe.min(), probe.max(), len(probe) * das_interp_multiplier)
-                for i in range(A_final.shape[0]):
-                    f_interp = interp1d(probe, A_final[i, :], kind=das_interp_method,
-                                        fill_value="extrapolate")
+                probe_interp = np.linspace(probe.min( ), probe.max( ), len(probe) * das_interp_multiplier)
+                for i in range(A_final.shape [ 0 ]):
+                    f_interp = interp1d(probe, A_final [ i, : ], kind = das_interp_method,
+                                        fill_value = "extrapolate")
                     das_interp = f_interp(probe_interp)
-                    ax2.plot(probe_interp, das_interp, linewidth=2,
-                             label=f'τ = {best_taus[i]:.2f} {formatted_y_unit}')
+                    ax2.plot(probe_interp, das_interp, linewidth = 2,
+                             label = f'τ = {best_taus [ i ]:.2f} {formatted_y_unit}')
             except Exception as e:
                 QMessageBox.warning(self, "Interpolation Error", f"DAS interpolation failed: {e}. Plotting raw DAS.")
-                for i in range(A_final.shape[0]):
-                    ax2.plot(probe, A_final[i, :], linewidth=2,
-                             label=f'τ = {best_taus[i]:.2f} {formatted_y_unit}')
+                for i in range(A_final.shape [ 0 ]):
+                    ax2.plot(probe, A_final [ i, : ], linewidth = 2,
+                             label = f'τ = {best_taus [ i ]:.2f} {formatted_y_unit}')
         else:
-            for i in range(A_final.shape[0]):
-                ax2.plot(probe, A_final[i, :], linewidth=2,
-                         label=f'τ = {best_taus[i]:.2f} {formatted_y_unit}')
+            for i in range(A_final.shape [ 0 ]):
+                ax2.plot(probe, A_final [ i, : ], linewidth = 2,
+                         label = f'τ = {best_taus [ i ]:.2f} {formatted_y_unit}')
 
-        ax2.set_title('Decay-Associated Spectra (DAS)')
+        ax2.set_title('DAS spectra')
         ax2.set_xlabel(f'{self.x_axis_label} ({formatted_x_unit})')
-        ax2.set_ylabel('Amplitude (mOD)')
-        ax2.legend()
-        ax2.minorticks_on()
+        ax2.set_ylabel('Absorbance change (mOD)')
+        ax2.legend( )
+        ax2.minorticks_on( )
         ax2.grid(True)
-        fig2.tight_layout()
-        canvas2.draw()
+        fig2.tight_layout( )
+        canvas2.draw( )
 
         self.plot_layout.addWidget(plot2_widget)
 
-        fig3 = Figure(figsize=(6, 6), dpi=100)
+        fig3 = Figure(figsize = (6, 6), dpi = 100)
         canvas3 = FigureCanvas(fig3)
         ax3 = fig3.add_subplot(111)
         toolbar3 = NavigationToolbar(canvas3, plot3_widget)
@@ -669,16 +676,16 @@ class GlobalFitApp(QWidget):
 
         for p_val in probes_to_plot:
             idx = find(probe, p_val)
-            ax3.plot(time, data[:, idx], 'o', color='k', alpha=0.2, label=f'Data at {p_val}')
-            ax3.plot(time, best_fit[:, idx], '-', linewidth=2, label=f'Fit at {p_val} {formatted_x_unit}')
+            ax3.plot(time, data [ :, idx ], 'o', color = 'k', alpha = 0.2)
+            ax3.plot(time, best_fit [ :, idx ], '-', linewidth = 2, label = f'{p_val} {formatted_x_unit}')
         ax3.set_title('Time Traces with Fits')
         ax3.set_xlabel(f'{self.y_axis_label} ({formatted_y_unit})')
         ax3.set_ylabel('Signal (mOD)')
-        ax3.legend()
-        ax3.minorticks_on()
+        ax3.legend( )
+        ax3.minorticks_on( )
         ax3.grid(True)
-        fig3.tight_layout()
-        canvas3.draw()
+        fig3.tight_layout( )
+        canvas3.draw( )
 
         self.plot_layout.addWidget(plot3_widget)
 
@@ -695,7 +702,7 @@ def gaussian(x, amp, pos, fwhm):
 def multi_gaussian(x, *params):
     y = np.zeros_like(x)
     for i in range(0, len(params), 3):
-        amp, pos, fwhm = params[i:i + 3]
+        amp, pos, fwhm = params [ i:i + 3 ]
         y += gaussian(x, amp, pos, fwhm)
     return y
 
@@ -706,9 +713,9 @@ def lorentzian(x, amplitude, mean, fwhm):
 
 
 def multi_lorentzian(x, *params):
-    y_sum = np.zeros_like(x, dtype=float)
+    y_sum = np.zeros_like(x, dtype = float)
     for i in range(0, len(params), 3):
-        amplitude, mean, fwhm = params[i:i + 3]
+        amplitude, mean, fwhm = params [ i:i + 3 ]
         y_sum += lorentzian(x, amplitude, mean, fwhm)
     return y_sum
 
@@ -720,18 +727,18 @@ def exponential(x, amp, tau):
 def multi_exponential(x, *params):
     y = np.zeros_like(x)
     for i in range(0, len(params), 2):
-        amp, tau = params[i:i + 2]
+        amp, tau = params [ i:i + 2 ]
         y += exponential(x, amp, tau)
     return y
 
 
 class LineThicknessDialog(QDialog):
     def __init__(self, parent=None, initial_thickness=2):
-        super().__init__(parent)
+        super( ).__init__(parent)
         self.setWindowTitle("Change Line Thickness")
         self.setGeometry(300, 300, 250, 100)
-        layout = QVBoxLayout()
-        h_layout = QHBoxLayout()
+        layout = QVBoxLayout( )
+        h_layout = QHBoxLayout( )
         h_layout.addWidget(QLabel("Line Thickness (px):"))
         self.thickness_input = QSpinBox(self)
         self.thickness_input.setRange(1, 10)
@@ -744,12 +751,12 @@ class LineThicknessDialog(QDialog):
         self.setLayout(layout)
 
     def get_thickness(self):
-        return self.thickness_input.value()
+        return self.thickness_input.value( )
 
 
 class EditNamesDialog(QDialog):
     def __init__(self, parent=None, current_labels=None):
-        super().__init__(parent)
+        super( ).__init__(parent)
         self.setWindowTitle("Edit Axis Names")
         self.setGeometry(200, 200, 1000, 550)
         self.labels = current_labels if current_labels else {
@@ -760,11 +767,11 @@ class EditNamesDialog(QDialog):
             'y_slice_bottom': 'Probe wavenumber [cm\u207B\u00B9]',
             'y_slice_left': 'ΔOD'
         }
-        self.init_ui()
+        self.init_ui( )
 
     def init_ui(self):
-        layout = QVBoxLayout()
-        form_layout = QGridLayout()
+        layout = QVBoxLayout( )
+        form_layout = QGridLayout( )
         dialog_font = QFont("Times New Roman")
         dialog_font.setPointSize(12)
 
@@ -772,7 +779,7 @@ class EditNamesDialog(QDialog):
         label_signal_bottom.setFont(dialog_font)
         form_layout.addWidget(label_signal_bottom, 0, 0)
         self.signal_bottom_input = QLineEdit(self)
-        self.signal_bottom_input.setText(self.labels['signal_bottom'])
+        self.signal_bottom_input.setText(self.labels [ 'signal_bottom' ])
         self.signal_bottom_input.setFont(dialog_font)
         form_layout.addWidget(self.signal_bottom_input, 0, 1)
 
@@ -780,7 +787,7 @@ class EditNamesDialog(QDialog):
         label_signal_left.setFont(dialog_font)
         form_layout.addWidget(label_signal_left, 1, 0)
         self.signal_left_input = QLineEdit(self)
-        self.signal_left_input.setText(self.labels['signal_left'])
+        self.signal_left_input.setText(self.labels [ 'signal_left' ])
         self.signal_left_input.setFont(dialog_font)
         form_layout.addWidget(self.signal_left_input, 1, 1)
 
@@ -788,7 +795,7 @@ class EditNamesDialog(QDialog):
         label_x_slice_bottom.setFont(dialog_font)
         form_layout.addWidget(label_x_slice_bottom, 2, 0)
         self.x_slice_bottom_input = QLineEdit(self)
-        self.x_slice_bottom_input.setText(self.labels['x_slice_bottom'])
+        self.x_slice_bottom_input.setText(self.labels [ 'x_slice_bottom' ])
         self.x_slice_bottom_input.setFont(dialog_font)
         form_layout.addWidget(self.x_slice_bottom_input, 2, 1)
 
@@ -796,7 +803,7 @@ class EditNamesDialog(QDialog):
         label_x_slice_left.setFont(dialog_font)
         form_layout.addWidget(label_x_slice_left, 3, 0)
         self.x_slice_left_input = QLineEdit(self)
-        self.x_slice_left_input.setText(self.labels['x_slice_left'])
+        self.x_slice_left_input.setText(self.labels [ 'x_slice_left' ])
         self.x_slice_left_input.setFont(dialog_font)
         form_layout.addWidget(self.x_slice_left_input, 3, 1)
 
@@ -804,7 +811,7 @@ class EditNamesDialog(QDialog):
         label_y_slice_bottom.setFont(dialog_font)
         form_layout.addWidget(label_y_slice_bottom, 4, 0)
         self.y_slice_bottom_input = QLineEdit(self)
-        self.y_slice_bottom_input.setText(self.labels['y_slice_bottom'])
+        self.y_slice_bottom_input.setText(self.labels [ 'y_slice_bottom' ])
         self.y_slice_bottom_input.setFont(dialog_font)
         form_layout.addWidget(self.y_slice_bottom_input, 4, 1)
 
@@ -812,7 +819,7 @@ class EditNamesDialog(QDialog):
         label_y_slice_left.setFont(dialog_font)
         form_layout.addWidget(label_y_slice_left, 5, 0)
         self.y_slice_left_input = QLineEdit(self)
-        self.y_slice_left_input.setText(self.labels['y_slice_left'])
+        self.y_slice_left_input.setText(self.labels [ 'y_slice_left' ])
         self.y_slice_left_input.setFont(dialog_font)
         form_layout.addWidget(self.y_slice_left_input, 5, 1)
 
@@ -825,12 +832,12 @@ class EditNamesDialog(QDialog):
 
     def get_names(self):
         return {
-            'signal_bottom': self.signal_bottom_input.text(),
-            'signal_left': self.signal_left_input.text(),
-            'x_slice_bottom': self.x_slice_bottom_input.text(),
-            'x_slice_left': self.x_slice_left_input.text(),
-            'y_slice_bottom': self.y_slice_bottom_input.text(),
-            'y_slice_left': self.y_slice_left_input.text()
+            'signal_bottom': self.signal_bottom_input.text( ),
+            'signal_left': self.signal_left_input.text( ),
+            'x_slice_bottom': self.x_slice_bottom_input.text( ),
+            'x_slice_left': self.x_slice_left_input.text( ),
+            'y_slice_bottom': self.y_slice_bottom_input.text( ),
+            'y_slice_left': self.y_slice_left_input.text( )
         }
 
 
@@ -838,9 +845,9 @@ class ExponentialFitterApp(QWidget):
     def __init__(self, parent=None, x_data=None, y_data=None, xlabel="X-axis",
                  ylabel="Y-axis", slice_axis_name="", slice_value=None,
                  slice_unit="", is_spline_corrected=False):
-        super().__init__(parent)
-        self.x_data = x_data if x_data is not None else np.array([])
-        self.y_data = y_data if y_data is not None else np.array([])
+        super( ).__init__(parent)
+        self.x_data = x_data if x_data is not None else np.array([ ])
+        self.y_data = y_data if y_data is not None else np.array([ ])
         self.xlabel = xlabel
         self.ylabel = ylabel
         self.slice_axis_name = slice_axis_name
@@ -848,21 +855,21 @@ class ExponentialFitterApp(QWidget):
         self.slice_unit = slice_unit
         self.is_spline_corrected = is_spline_corrected
         self.is_guessing_mode_active = False
-        title_parts = ["Exponential:"]
+        title_parts = [ "Exponential:" ]
         if self.slice_axis_name and self.slice_value is not None:
             title_parts.append(f"{self.slice_axis_name} = {self.slice_value:.1f}{self.slice_unit}")
         self.setWindowTitle(" ".join(title_parts))
         self.setObjectName(" ".join(title_parts))
-        self.init_ui()
-        self.init_fitter_variables()
-        self.update_plot()
+        self.init_ui( )
+        self.init_fitter_variables( )
+        self.update_plot( )
 
     def init_ui(self):
         self.main_layout = QVBoxLayout(self)
-        self.fig, self.ax = plt.subplots(figsize=(15, 10))
+        self.fig, self.ax = plt.subplots(figsize = (15, 10))
         self.canvas = FigureCanvas(self.fig)
         self.toolbar = NavigationToolbar(self.canvas, self)
-        self.params_text_edit = QTextEdit()
+        self.params_text_edit = QTextEdit( )
         self.params_text_edit.setReadOnly(True)
         self.params_text_edit.setMinimumHeight(100)
         self.params_text_edit.setStyleSheet("font-family: Consolas; font-size: 10pt;")
@@ -875,8 +882,8 @@ class ExponentialFitterApp(QWidget):
         self.splitter = QSplitter(Qt.Vertical)
         self.splitter.addWidget(self.canvas)
         self.splitter.addWidget(self.params_text_edit)
-        self.splitter.setSizes([700, 300])
-        self.control_layout = QHBoxLayout()
+        self.splitter.setSizes([ 700, 300 ])
+        self.control_layout = QHBoxLayout( )
         self.control_layout.addWidget(self.start_guess_button)
         self.control_layout.addWidget(self.fit_button)
         self.control_layout.addWidget(self.clear_button)
@@ -896,7 +903,7 @@ class ExponentialFitterApp(QWidget):
     def init_fitter_variables(self):
         self.current_component = None
         self.start_x = None
-        self.fixed_components = []
+        self.fixed_components = [ ]
         self.fitted_params = None
         self.fitted_errors = None
 
@@ -910,14 +917,14 @@ class ExponentialFitterApp(QWidget):
             self.start_guess_button.setText("Start Initial Guess")
             self.info_label.setText("Guessing Mode: OFF. Use toolbar to zoom/pan.")
             self.current_component = None
-        self.update_plot()
+        self.update_plot( )
 
     def on_click(self, event):
         if event.inaxes != self.ax or not self.is_guessing_mode_active:
             return
         if event.button == 1:
             if self.current_component is None:
-                self.current_component = [event.ydata, 1.0]
+                self.current_component = [ event.ydata, 1.0 ]
                 self.start_x = event.xdata
                 self.info_label.setText("Drag to adjust decay (tau), then click again to fix.")
             else:
@@ -925,45 +932,45 @@ class ExponentialFitterApp(QWidget):
                 self.current_component = None
                 self.info_label.setText(
                     f"Component {len(self.fixed_components)} fixed. Click for next, or 'Stop Guessing'.")
-            self.update_plot()
+            self.update_plot( )
 
     def on_motion(self, event):
         if event.inaxes != self.ax or self.current_component is None or not self.is_guessing_mode_active:
             return
-        self.current_component[1] = max(0.01, abs(event.xdata - self.start_x))
-        self.update_plot()
+        self.current_component [ 1 ] = max(0.01, abs(event.xdata - self.start_x))
+        self.update_plot( )
 
     def on_fit(self):
         if not self.fixed_components:
             QMessageBox.warning(self, "No Components", "Please fix at least one exponential component before fitting.")
             return
-        initial_params = np.array(self.fixed_components).flatten()
+        initial_params = np.array(self.fixed_components).flatten( )
         try:
-            self.fitted_params, pcov = curve_fit(multi_exponential, self.x_data, self.y_data, p0=initial_params,
-                                                 bounds=(-np.inf, np.inf))
+            self.fitted_params, pcov = curve_fit(multi_exponential, self.x_data, self.y_data, p0 = initial_params,
+                                                 bounds = (-np.inf, np.inf))
             self.fitted_errors = np.sqrt(np.diag(pcov))
-            self.display_fitted_parameters()
-            self.update_plot()
+            self.display_fitted_parameters( )
+            self.update_plot( )
             self.info_label.setText("Fitting complete. See fitted parameters below.")
         except RuntimeError as e:
             QMessageBox.critical(self, "Fitting Error", f"Failed to fit: {e}. Adjust initial guesses and try again.")
             self.info_label.setText("Fitting failed. Adjust guesses.")
 
     def on_clear_guesses(self):
-        self.init_fitter_variables()
-        self.params_text_edit.clear()
+        self.init_fitter_variables( )
+        self.params_text_edit.clear( )
         self.info_label.setText("All guesses cleared. Click 'Start Initial Guess' to begin.")
-        self.update_plot()
+        self.update_plot( )
 
     def display_fitted_parameters(self):
         if self.fitted_params is None:
-            self.params_text_edit.clear()
+            self.params_text_edit.clear( )
             return
         output_text = "Fitted Exponential Parameters:\n"
         output_text += "----------------------------------\n"
         for i in range(0, len(self.fitted_params), 2):
-            amp, tau = self.fitted_params[i:i + 2]
-            amp_err, tau_err = self.fitted_errors[i:i + 2]
+            amp, tau = self.fitted_params [ i:i + 2 ]
+            amp_err, tau_err = self.fitted_errors [ i:i + 2 ]
             output_text += (f"Component {i // 2 + 1}:\n"
                             f"  Amplitude (A): {amp:.4g} ± {amp_err:.2g}\n"
                             f"  Decay (τ):     {tau:.4g} ± {tau_err:.2g}\n"
@@ -971,81 +978,81 @@ class ExponentialFitterApp(QWidget):
         self.params_text_edit.setText(output_text)
 
     def update_plot(self):
-        self.ax.clear()
-        self.ax.plot(self.x_data, self.y_data, 'b-', label='Data')
+        self.ax.clear( )
+        self.ax.plot(self.x_data, self.y_data, 'b-', label = 'Data')
         if self.fitted_params is None and (len(self.fixed_components) > 0 or self.current_component):
             y_sum_guess = np.zeros_like(self.x_data)
             for amp, tau in self.fixed_components:
                 y_sum_guess += exponential(self.x_data, amp, tau)
             if self.current_component:
                 y_sum_guess += exponential(self.x_data, *self.current_component)
-            self.ax.plot(self.x_data, y_sum_guess, 'r--', alpha=0.7, label='Initial Guess Sum')
+            self.ax.plot(self.x_data, y_sum_guess, 'r--', alpha = 0.7, label = 'Initial Guess Sum')
         if self.fitted_params is not None:
             y_fit_total = multi_exponential(self.x_data, *self.fitted_params)
-            self.ax.plot(self.x_data, y_fit_total, 'g-', linewidth=2, label='Fitted Sum')
+            self.ax.plot(self.x_data, y_fit_total, 'g-', linewidth = 2, label = 'Fitted Sum')
             for i in range(0, len(self.fitted_params), 2):
-                params = self.fitted_params[i:i + 2]
-                self.ax.plot(self.x_data, exponential(self.x_data, *params), '--', alpha=0.6,
-                             label=f'Component {i // 2 + 1}')
-        self.ax.set_xlabel(self.xlabel, fontsize=14)
-        self.ax.set_ylabel(self.ylabel, fontsize=14)
+                params = self.fitted_params [ i:i + 2 ]
+                self.ax.plot(self.x_data, exponential(self.x_data, *params), '--', alpha = 0.6,
+                             label = f'Component {i // 2 + 1}')
+        self.ax.set_xlabel(self.xlabel, fontsize = 12)
+        self.ax.set_ylabel(self.ylabel, fontsize = 12)
         self.ax.grid(True)
-        self.ax.legend(loc='best', fontsize=12)
-        self.ax.tick_params(axis='both', which='major', labelsize=12)
-        self.canvas.draw()
+        self.ax.legend(loc = 'best', fontsize = 10)
+        self.ax.tick_params(axis = 'both', which = 'major', labelsize = 10)
+        self.canvas.draw( )
 
     def get_fitter_state(self):
         return {
             'type': 'ExponentialFitterApp',
-            'tab_title': self.objectName(),
-            'x_data': self.x_data.tolist() if self.x_data is not None else None,
-            'y_data': self.y_data.tolist() if self.y_data is not None else None,
+            'tab_title': self.objectName( ),
+            'x_data': self.x_data.tolist( ) if self.x_data is not None else None,
+            'y_data': self.y_data.tolist( ) if self.y_data is not None else None,
             'xlabel': self.xlabel,
             'ylabel': self.ylabel,
             'slice_axis_name': self.slice_axis_name,
             'slice_value': self.slice_value,
             'slice_unit': self.slice_unit,
             'fixed_components': self.fixed_components,
-            'fitted_params': self.fitted_params.tolist() if self.fitted_params is not None else None,
-            'fitted_errors': self.fitted_errors.tolist() if self.fitted_errors is not None else None,
+            'fitted_params': self.fitted_params.tolist( ) if self.fitted_params is not None else None,
+            'fitted_errors': self.fitted_errors.tolist( ) if self.fitted_errors is not None else None,
         }
 
     def set_fitter_state(self, state):
         self.setObjectName(state.get('tab_title', 'Exponential Fitter'))
         self.setWindowTitle(state.get('tab_title', 'Exponential Fitter'))
 
-        self.x_data = np.array(state.get('x_data')) if state.get('x_data') is not None else np.array([])
-        self.y_data = np.array(state.get('y_data')) if state.get('y_data') is not None else np.array([])
+        self.x_data = np.array(state.get('x_data')) if state.get('x_data') is not None else np.array([ ])
+        self.y_data = np.array(state.get('y_data')) if state.get('y_data') is not None else np.array([ ])
         self.xlabel = state.get('xlabel', "X-axis")
         self.ylabel = state.get('ylabel', "Y-axis")
         self.slice_axis_name = state.get('slice_axis_name', "")
         self.slice_value = state.get('slice_value')
         self.slice_unit = state.get('slice_unit', "")
-        self.fixed_components = state.get('fixed_components', [])
+        self.fixed_components = state.get('fixed_components', [ ])
         self.fitted_params = np.array(state.get('fitted_params')) if state.get('fitted_params') is not None else None
         self.fitted_errors = np.array(state.get('fitted_errors')) if state.get('fitted_errors') is not None else None
-        self.display_fitted_parameters()
-        self.update_plot()
+        self.display_fitted_parameters( )
+        self.update_plot( )
 
     def _close_tab(self):
-        parent_tab_widget = self.parent()
+        parent_tab_widget = self.parent( )
         if parent_tab_widget and isinstance(parent_tab_widget, QTabWidget):
             tab_index = parent_tab_widget.indexOf(self)
             if tab_index != -1:
                 parent_tab_widget.removeTab(tab_index)
-        self.deleteLater()
+        self.deleteLater( )
 
 
 class GaussianFitterApp(QWidget):
     def __init__(self, parent=None, x_data=None, y_data=None, fitting_function_type="Gaussian", xlabel="X-axis",
                  ylabel="Y-axis",
                  slice_axis_name="", slice_value=None, slice_unit="", is_spline_corrected=False):
-        super().__init__(parent)
-        self.xga = x_data if x_data is not None else np.array([])
-        self.yga = y_data if y_data is not None else np.array([])
-        self._original_x_data = np.copy(x_data) if x_data is not None else np.array([])
-        self._original_y_data = np.copy(y_data) if y_data is not None else np.array([])
-        self.fitting_function_type = fitting_function_type.capitalize()
+        super( ).__init__(parent)
+        self.xga = x_data if x_data is not None else np.array([ ])
+        self.yga = y_data if y_data is not None else np.array([ ])
+        self._original_x_data = np.copy(x_data) if x_data is not None else np.array([ ])
+        self._original_y_data = np.copy(y_data) if y_data is not None else np.array([ ])
+        self.fitting_function_type = fitting_function_type.capitalize( )
         self.xlabel = xlabel
         self.ylabel = ylabel
         self.slice_axis_name = slice_axis_name
@@ -1053,21 +1060,21 @@ class GaussianFitterApp(QWidget):
         self.slice_unit = slice_unit
         self.is_spline_corrected = is_spline_corrected
         self.is_guessing_mode_active = False
-        title_parts = [f"{self.fitting_function_type}:"]
+        title_parts = [ f"{self.fitting_function_type}:" ]
         if self.slice_axis_name and self.slice_value is not None:
             title_parts.append(f"{self.slice_axis_name} = {self.slice_value:.1f}{self.slice_unit}")
         self.setWindowTitle(" ".join(title_parts))
         self.setObjectName(" ".join(title_parts))
-        self.init_ui()
-        self.init_fitter_variables()
-        self.update_plot()
+        self.init_ui( )
+        self.init_fitter_variables( )
+        self.update_plot( )
 
     def init_ui(self):
         self.main_layout = QVBoxLayout(self)
-        self.fig, self.ax = plt.subplots(figsize=(15, 10))
+        self.fig, self.ax = plt.subplots(figsize = (15, 10))
         self.canvas = FigureCanvas(self.fig)
         self.toolbar = NavigationToolbar(self.canvas, self)
-        self.params_text_edit = QTextEdit()
+        self.params_text_edit = QTextEdit( )
         self.params_text_edit.setReadOnly(True)
         self.params_text_edit.setMinimumHeight(100)
         self.params_text_edit.setStyleSheet("font-family: Consolas; font-size: 10pt;")
@@ -1081,8 +1088,8 @@ class GaussianFitterApp(QWidget):
         self.splitter = QSplitter(Qt.Vertical)
         self.splitter.addWidget(self.canvas)
         self.splitter.addWidget(self.params_text_edit)
-        self.splitter.setSizes([700, 300])
-        self.control_layout = QHBoxLayout()
+        self.splitter.setSizes([ 700, 300 ])
+        self.control_layout = QHBoxLayout( )
         self.control_layout.addWidget(self.start_guess_button)
         self.control_layout.addWidget(self.fit_button)
         self.control_layout.addWidget(self.clear_button)
@@ -1104,11 +1111,11 @@ class GaussianFitterApp(QWidget):
         self.pos = None
         self.fwhm = None
         self.temp_line = None
-        self.fixed_peaks = []
+        self.fixed_peaks = [ ]
         self.fitted_params = None
         self.fitted_errors = None
-        self.original_xlim = self.ax.get_xlim()
-        self.original_ylim = self.ax.get_ylim()
+        self.original_xlim = self.ax.get_xlim( )
+        self.original_ylim = self.ax.get_ylim( )
 
     def _get_single_function(self):
         if self.fitting_function_type == "Gaussian":
@@ -1135,7 +1142,7 @@ class GaussianFitterApp(QWidget):
             self.temp_line = None
             self.start_guess_button.setText("Stop Initial Guess")
             self.info_label.setText("Guessing Mode: ON. Click on the plot for peak position and amplitude.")
-            self.update_plot()
+            self.update_plot( )
         else:
             self.start_guess_button.setText("Start Initial Guess")
             self.info_label.setText(
@@ -1144,7 +1151,7 @@ class GaussianFitterApp(QWidget):
             self.pos = None
             self.fwhm = None
             self.temp_line = None
-            self.update_plot()
+            self.update_plot( )
 
     def on_click(self, event):
         if event.inaxes != self.ax:
@@ -1155,7 +1162,7 @@ class GaussianFitterApp(QWidget):
             if self.amp is None:
                 self.amp = event.ydata
                 self.pos = event.xdata
-                self.fwhm = (self.xga[-1] - self.xga[0]) / 10 if (self.xga[-1] - self.xga[0]) != 0 else 1.0
+                self.fwhm = (self.xga [ -1 ] - self.xga [ 0 ]) / 10 if (self.xga [ -1 ] - self.xga [ 0 ]) != 0 else 1.0
                 self.start_x = event.xdata
                 self.info_label.setText("Drag mouse to adjust FWHM, then click again to fix.")
             else:
@@ -1166,7 +1173,7 @@ class GaussianFitterApp(QWidget):
                 self.temp_line = None
                 self.info_label.setText(
                     f"{self.fitting_function_type} {len(self.fixed_peaks)} fixed. Click for next, or 'Stop Initial Guess'.")
-            self.update_plot()
+            self.update_plot( )
         elif event.button == 3:
             if self.amp is not None:
                 self.amp = None
@@ -1174,7 +1181,7 @@ class GaussianFitterApp(QWidget):
                 self.fwhm = None
                 self.temp_line = None
                 self.info_label.setText("Current peak selection cancelled. Click to start new guess.")
-                self.update_plot()
+                self.update_plot( )
 
     def on_motion(self, event):
         if event.inaxes != self.ax or self.amp is None or not self.is_guessing_mode_active:
@@ -1182,10 +1189,10 @@ class GaussianFitterApp(QWidget):
         self.fwhm = 2 * abs(event.xdata - self.start_x)
         if self.fwhm < 0.001:
             self.fwhm = 0.001
-        self.update_plot()
+        self.update_plot( )
 
     def apply_interpolation_settings(self, method, multiplier):
-        self.on_clear_guesses()
+        self.on_clear_guesses( )
         if method == "None":
             self.xga = np.copy(self._original_x_data)
             self.yga = np.copy(self._original_y_data)
@@ -1194,9 +1201,9 @@ class GaussianFitterApp(QWidget):
                 target_n_points = int(len(self._original_x_data) * multiplier)
                 if target_n_points < 2:
                     target_n_points = 2
-                x_interp = np.linspace(self._original_x_data.min(), self._original_x_data.max(), target_n_points)
-                f_interp = interp1d(self._original_x_data, self._original_y_data, kind=method,
-                                    fill_value="extrapolate")
+                x_interp = np.linspace(self._original_x_data.min( ), self._original_x_data.max( ), target_n_points)
+                f_interp = interp1d(self._original_x_data, self._original_y_data, kind = method,
+                                    fill_value = "extrapolate")
                 y_interp = f_interp(x_interp)
                 self.xga = x_interp
                 self.yga = y_interp
@@ -1210,7 +1217,7 @@ class GaussianFitterApp(QWidget):
                                     f"An unexpected error occurred during interpolation: {e}")
                 self.xga = np.copy(self._original_x_data)
                 self.yga = np.copy(self._original_y_data)
-        self.update_plot()
+        self.update_plot( )
 
     def on_fit(self):
         if not self.fixed_peaks:
@@ -1221,18 +1228,18 @@ class GaussianFitterApp(QWidget):
             self.is_guessing_mode_active = False
             self.start_guess_button.setText("Start Initial Guess")
             self.info_label.setText("Guessing Mode: OFF. Fitting in progress...")
-        params = np.array(self.fixed_peaks).flatten()
-        lower_bounds = []
-        upper_bounds = []
+        params = np.array(self.fixed_peaks).flatten( )
+        lower_bounds = [ ]
+        upper_bounds = [ ]
         for _ in range(len(self.fixed_peaks)):
-            lower_bounds.extend([-np.inf, self.xga.min(), 0.001])
-            upper_bounds.extend([np.inf, self.xga.max(), np.inf])
+            lower_bounds.extend([ -np.inf, self.xga.min( ), 0.001 ])
+            upper_bounds.extend([ np.inf, self.xga.max( ), np.inf ])
         try:
-            self.fitted_params, pcov = curve_fit(self._get_multi_function(), self.xga, self.yga, p0=params,
-                                                 bounds=(lower_bounds, upper_bounds))
+            self.fitted_params, pcov = curve_fit(self._get_multi_function( ), self.xga, self.yga, p0 = params,
+                                                 bounds = (lower_bounds, upper_bounds))
             self.fitted_errors = np.sqrt(np.diag(pcov))
-            self.update_plot()
-            self.display_fitted_parameters()
+            self.update_plot( )
+            self.display_fitted_parameters( )
             self.info_label.setText("Fitting complete. See fitted parameters below.")
         except RuntimeError as e:
             QMessageBox.critical(self, "Fitting Error",
@@ -1244,27 +1251,27 @@ class GaussianFitterApp(QWidget):
             self.info_label.setText("Fitting failed due to input error. Check data.")
 
     def on_clear_guesses(self):
-        self.fixed_peaks = []
+        self.fixed_peaks = [ ]
         self.amp = None
         self.pos = None
         self.fwhm = None
         self.temp_line = None
         self.fitted_params = None
         self.fitted_errors = None
-        self.params_text_edit.clear()
+        self.params_text_edit.clear( )
         self.info_label.setText("All peak guesses cleared. Click 'Start Initial Guess' to define new ones.")
-        self.update_plot()
+        self.update_plot( )
 
     def display_fitted_parameters(self):
         if self.fitted_params is None:
-            self.params_text_edit.clear()
+            self.params_text_edit.clear( )
             return
         output_text = f"Fitted {self.fitting_function_type} Parameters:\n"
         output_text += "--------------------------------------------------\n"
         for i in range(0, len(self.fitted_params), 3):
-            amp, pos, fwhm = self.fitted_params[i:i + 3]
+            amp, pos, fwhm = self.fitted_params [ i:i + 3 ]
             amp_err, pos_err, fwhm_err = (
-                self.fitted_errors[i], self.fitted_errors[i + 1], self.fitted_errors[i + 2]
+                self.fitted_errors [ i ], self.fitted_errors [ i + 1 ], self.fitted_errors [ i + 2 ]
             ) if i + 2 < len(self.fitted_errors) else (0, 0, 0)
             output_text += (f"Peak {i // 3 + 1}:\n"
                             f"  Amplitude (Amp): {amp:.4g} ± {amp_err:.2g}\n"
@@ -1274,52 +1281,52 @@ class GaussianFitterApp(QWidget):
         self.params_text_edit.setText(output_text)
 
     def update_plot(self):
-        self.ax.clear()
-        self.ax.plot(self.xga, self.yga, 'b-', label='Data')
-        legend_entries = ['Data']
+        self.ax.clear( )
+        self.ax.plot(self.xga, self.yga, 'b-', label = 'Data')
+        legend_entries = [ 'Data' ]
         if self.fitted_params is not None:
-            self.ax.plot(self.xga, self._get_multi_function()(self.xga, *self.fitted_params),
-                         'g-', label='Fitted Curve', linewidth=2)
+            self.ax.plot(self.xga, self._get_multi_function( )(self.xga, *self.fitted_params),
+                         'g-', label = 'Fitted Curve', linewidth = 2)
             legend_entries.append('Fitted Curve')
             for i in range(0, len(self.fitted_params), 3):
-                amp, pos, fwhm = self.fitted_params[i:i + 3]
+                amp, pos, fwhm = self.fitted_params [ i:i + 3 ]
                 amp_err, pos_err, fwhm_err = (
-                    self.fitted_errors[i], self.fitted_errors[i + 1], self.fitted_errors[i + 2]
+                    self.fitted_errors [ i ], self.fitted_errors [ i + 1 ], self.fitted_errors [ i + 2 ]
                 ) if i + 2 < len(self.fitted_errors) else (0, 0, 0)
-                label = (f'{self.fitting_function_type[:5]} {i // 3 + 1}')
-                self.ax.plot(self.xga, self._get_single_function()(self.xga, amp, pos, fwhm),
-                             '--', alpha=0.7, linewidth=1.5, label=label)
+                label = (f'{self.fitting_function_type [ :5 ]} {i // 3 + 1}')
+                self.ax.plot(self.xga, self._get_single_function( )(self.xga, amp, pos, fwhm),
+                             '--', alpha = 0.7, linewidth = 1.5, label = label)
         else:
             for i, (amp, pos, fwhm) in enumerate(self.fixed_peaks):
                 label = f'Initial Guess {i + 1}' if i == 0 else ""
-                self.ax.plot(self.xga, self._get_single_function()(self.xga, amp, pos, fwhm),
-                             'r--', alpha=0.5, label=label)
+                self.ax.plot(self.xga, self._get_single_function( )(self.xga, amp, pos, fwhm),
+                             'r--', alpha = 0.5, label = label)
                 if i == 0:
                     legend_entries.append('Initial Guesses')
         if self.amp is not None:
             if self.fwhm == 0: self.fwhm = 0.001
             self.temp_line, = self.ax.plot(self.xga,
-                                           self._get_single_function()(self.xga, self.amp, self.pos, self.fwhm),
-                                           'g--', alpha=0.5, label='Adjusting Width')
+                                           self._get_single_function( )(self.xga, self.amp, self.pos, self.fwhm),
+                                           'g--', alpha = 0.5, label = 'Adjusting Width')
             if 'Adjusting Width' not in legend_entries:
                 legend_entries.append('Adjusting Width')
-        self.ax.set_ylabel(self.ylabel, fontsize=14)
-        self.ax.set_xlabel(self.xlabel, fontsize=14)
+        self.ax.set_ylabel(self.ylabel, fontsize = 12)
+        self.ax.set_xlabel(self.xlabel, fontsize = 12)
         self.ax.grid(True)
-        self.ax.legend(loc='best', fontsize=14)
-        self.ax.tick_params(axis='both', which='major', labelsize=12)
+        self.ax.legend(loc = 'best', fontsize = 10)
+        self.ax.tick_params(axis = 'both', which = 'major', labelsize = 10)
         if self.fitted_params is None:
             pass
-        self.canvas.draw()
+        self.canvas.draw( )
 
     def get_fitter_state(self):
         return {
             'type': 'GaussianFitterApp',
-            'tab_title': self.objectName(),
-            'x_data': self.xga.tolist(),
-            'y_data': self.yga.tolist(),
-            'original_x_data': self._original_x_data.tolist(),
-            'original_y_data': self._original_y_data.tolist(),
+            'tab_title': self.objectName( ),
+            'x_data': self.xga.tolist( ),
+            'y_data': self.yga.tolist( ),
+            'original_x_data': self._original_x_data.tolist( ),
+            'original_y_data': self._original_y_data.tolist( ),
             'fitting_function_type': self.fitting_function_type,
             'xlabel': self.xlabel,
             'ylabel': self.ylabel,
@@ -1327,8 +1334,8 @@ class GaussianFitterApp(QWidget):
             'slice_value': self.slice_value,
             'slice_unit': self.slice_unit,
             'fixed_peaks': self.fixed_peaks,
-            'fitted_params': self.fitted_params.tolist() if self.fitted_params is not None else None,
-            'fitted_errors': self.fitted_errors.tolist() if self.fitted_errors is not None else None,
+            'fitted_params': self.fitted_params.tolist( ) if self.fitted_params is not None else None,
+            'fitted_errors': self.fitted_errors.tolist( ) if self.fitted_errors is not None else None,
             'is_spline_corrected': self.is_spline_corrected
         }
 
@@ -1348,32 +1355,32 @@ class GaussianFitterApp(QWidget):
         self.slice_axis_name = state.get('slice_axis_name', '')
         self.slice_value = state.get('slice_value')
         self.slice_unit = state.get('slice_unit', '')
-        self.fixed_peaks = state.get('fixed_peaks', [])
+        self.fixed_peaks = state.get('fixed_peaks', [ ])
         self.fitted_params = np.array(state.get('fitted_params')) if state.get('fitted_params') is not None else None
         self.fitted_errors = np.array(state.get('fitted_errors')) if state.get('fitted_errors') is not None else None
         self.is_spline_corrected = state.get('is_spline_corrected', False)
-        self.display_fitted_parameters()
-        self.update_plot()
+        self.display_fitted_parameters( )
+        self.update_plot( )
 
     def _close_tab(self):
-        parent_tab_widget = self.parent()
+        parent_tab_widget = self.parent( )
         if parent_tab_widget and isinstance(parent_tab_widget, QTabWidget):
             tab_index = parent_tab_widget.indexOf(self)
             if tab_index != -1:
                 parent_tab_widget.removeTab(tab_index)
-        self.deleteLater()
+        self.deleteLater( )
 
 
 def signal_fitter_wrapper(parent, plot_data_item, is_x_slice, fitting_function_type, xlabel, ylabel, slice_axis_name,
                           slice_value, slice_unit, is_spline_corrected):
-    x_data_full = plot_data_item.getData()[0]
-    y_data_full = plot_data_item.getData()[1]
-    view_range = plot_data_item.getViewBox().viewRange()
-    xlim_view = view_range[0]
-    ylim_view = view_range[1]
-    mask = np.logical_and(x_data_full >= xlim_view[0], x_data_full <= xlim_view[1])
-    x_data_filtered = x_data_full[mask]
-    y_data_filtered = y_data_full[mask]
+    x_data_full = plot_data_item.getData( ) [ 0 ]
+    y_data_full = plot_data_item.getData( ) [ 1 ]
+    view_range = plot_data_item.getViewBox( ).viewRange( )
+    xlim_view = view_range [ 0 ]
+    ylim_view = view_range [ 1 ]
+    mask = np.logical_and(x_data_full >= xlim_view [ 0 ], x_data_full <= xlim_view [ 1 ])
+    x_data_filtered = x_data_full [ mask ]
+    y_data_filtered = y_data_full [ mask ]
     if len(x_data_filtered) < 3:
         QMessageBox.warning(None, "Fit Error",
                             "Not enough data points in visible range for fitting (need at least 3). Zoom in or adjust data.")
@@ -1385,13 +1392,13 @@ def signal_fitter_wrapper(parent, plot_data_item, is_x_slice, fitting_function_t
 
 def exponential_fitter_wrapper(parent, plot_data_item, xlabel, ylabel, slice_axis_name, slice_value, slice_unit,
                                is_spline_corrected):
-    x_data_full = plot_data_item.getData()[0]
-    y_data_full = plot_data_item.getData()[1]
-    view_range = plot_data_item.getViewBox().viewRange()
-    xlim_view = view_range[0]
-    mask = np.logical_and(x_data_full >= xlim_view[0], x_data_full <= xlim_view[1])
-    x_data_filtered = x_data_full[mask]
-    y_data_filtered = y_data_full[mask]
+    x_data_full = plot_data_item.getData( ) [ 0 ]
+    y_data_full = plot_data_item.getData( ) [ 1 ]
+    view_range = plot_data_item.getViewBox( ).viewRange( )
+    xlim_view = view_range [ 0 ]
+    mask = np.logical_and(x_data_full >= xlim_view [ 0 ], x_data_full <= xlim_view [ 1 ])
+    x_data_filtered = x_data_full [ mask ]
+    y_data_filtered = y_data_full [ mask ]
     if len(x_data_filtered) < 2:
         QMessageBox.warning(None, "Fit Error", "Not enough data points in visible range for fitting (need at least 2).")
         return None
@@ -1402,17 +1409,17 @@ def exponential_fitter_wrapper(parent, plot_data_item, xlabel, ylabel, slice_axi
 
 class SignalPlotterApp(QMainWindow):
     def __init__(self):
-        super().__init__()
-        self.base_title = "Kaalen"
+        super( ).__init__( )
+        self.base_title = "Kaalen-v.1.0"
         self._current_project_file = None
         self._data_modified = False
-        self._update_window_title()
+        self._update_window_title( )
 
-        self.setGeometry(100, 100, 2500, 1500)
-        self.base_font_size = 14
-        self.axis_label_font_size = 14
-        self.axis_scale_font_size = 14
-        self.central_widget = QWidget()
+        self.setGeometry(100, 100, 1920, 1080)
+        self.base_font_size = 12
+        self.axis_label_font_size = 12
+        self.axis_scale_font_size = 12
+        self.central_widget = QWidget( )
 
         self.setCentralWidget(self.central_widget)
         self.main_layout = QGridLayout(self.central_widget)
@@ -1470,11 +1477,11 @@ class SignalPlotterApp(QMainWindow):
         self._original_y_slice_data_main_y = None
         self._original_y_slice_data_main_x = None
 
-        self.active_fitter_tabs = []
+        self.active_fitter_tabs = [ ]
 
-        self.init_ui()
+        self.init_ui( )
 
-        self.update_plots()
+        self.update_plots( )
 
         self.x_unit_input.textChanged.connect(self._set_data_modified)
         self.y_unit_input.textChanged.connect(self._set_data_modified)
@@ -1484,7 +1491,7 @@ class SignalPlotterApp(QMainWindow):
     def _set_data_modified(self):
         if not self._data_modified:
             self._data_modified = True
-            self._update_window_title()
+            self._update_window_title( )
 
     def _update_window_title(self):
         title = self.base_title
@@ -1500,25 +1507,25 @@ class SignalPlotterApp(QMainWindow):
         self.setWindowTitle(title)
 
     def _load_data_into_plots(self, x_raw, y_raw, z_raw):
-        self._initial_raw_x_values = x_raw.copy()
-        self._initial_raw_y_values = y_raw.copy()
-        self._initial_raw_signal_data = z_raw.copy()
-        self.current_x_values = x_raw.copy()
-        self.current_y_values = y_raw.copy()
-        self.current_signal_data = z_raw.copy()
+        self._initial_raw_x_values = x_raw.copy( )
+        self._initial_raw_y_values = y_raw.copy( )
+        self._initial_raw_signal_data = z_raw.copy( )
+        self.current_x_values = x_raw.copy( )
+        self.current_y_values = y_raw.copy( )
+        self.current_signal_data = z_raw.copy( )
         self.is_spline_corrected = False
         print(f"Original data shape: {self.current_signal_data.shape}")
-        print(f"Original X range: {self.current_x_values.min():.2f} to {self.current_x_values.max():.2f}")
-        print(f"Original Y range: {self.current_y_values.min():.2f} to {self.current_y_values.max():.2f}")
+        print(f"Original X range: {self.current_x_values.min( ):.2f} to {self.current_x_values.max( ):.2f}")
+        print(f"Original Y range: {self.current_y_values.min( ):.2f} to {self.current_y_values.max( ):.2f}")
         self.data_loaded = True
-        self._refresh_all_plots()
-        self._set_data_modified()
-        self.update_level_inputs()
+        self._refresh_all_plots( )
+        self._set_data_modified( )
+        self.update_level_inputs( )
 
     def update_level_inputs(self):
         if self.data_loaded:
-            self.min_level_input.setText(f"{self.signal_data_interp.min():.3f}")
-            self.max_level_input.setText(f"{self.signal_data_interp.max():.3f}")
+            self.min_level_input.setText(f"{self.signal_data_interp.min( ):.3f}")
+            self.max_level_input.setText(f"{self.signal_data_interp.max( ):.3f}")
         else:
             self.min_level_input.setText("")
             self.max_level_input.setText("")
@@ -1527,13 +1534,13 @@ class SignalPlotterApp(QMainWindow):
                            preserve_plot_ranges=False, signal_xlim=None, signal_ylim=None,
                            x_slice_xlim=None, x_slice_ylim=None, y_slice_xlim=None, y_slice_ylim=None):
         if not self.data_loaded:
-            self.update_plots()
+            self.update_plots( )
             return
         self.new_x_resolution = 1000
         self.new_y_resolution = 1000
-        self.x_values_interp = np.linspace(self.current_x_values.min(), self.current_x_values.max(),
+        self.x_values_interp = np.linspace(self.current_x_values.min( ), self.current_x_values.max( ),
                                            self.new_x_resolution)
-        self.y_values_interp = np.linspace(self.current_y_values.min(), self.current_y_values.max(),
+        self.y_values_interp = np.linspace(self.current_y_values.min( ), self.current_y_values.max( ),
                                            self.new_y_resolution)
         interp_func = RectBivariateSpline(self.current_y_values, self.current_x_values, self.current_signal_data)
         self.signal_data_interp = interp_func(self.y_values_interp, self.x_values_interp)
@@ -1543,60 +1550,60 @@ class SignalPlotterApp(QMainWindow):
         self.y_slider.setRange(0, len(self.current_y_values) - 1)
         self.image_item.setImage(self.signal_data_interp.T)
         self.image_item.setRect(pg.QtCore.QRectF(
-            self.x_values_interp[0],
-            self.y_values_interp[0],
-            self.x_values_interp[-1] - self.x_values_interp[0],
-            self.y_values_interp[-1] - self.y_values_interp[0]
+            self.x_values_interp [ 0 ],
+            self.y_values_interp [ 0 ],
+            self.x_values_interp [ -1 ] - self.x_values_interp [ 0 ],
+            self.y_values_interp [ -1 ] - self.y_values_interp [ 0 ]
         ))
         if preserve_contour_levels and min_level is not None and max_level is not None:
             self.min_level_input.setText(f"{min_level:.2f}")
             self.max_level_input.setText(f"{max_level:.2f}")
             self.image_item.setLevels((min_level, max_level))
         else:
-            self.min_level_input.setText(f"{self.signal_data_interp.min():.3f}")
-            self.max_level_input.setText(f"{self.signal_data_interp.max():.3f}")
-            self.image_item.setLevels((self.signal_data_interp.min(), self.signal_data_interp.max()))
+            self.min_level_input.setText(f"{self.signal_data_interp.min( ):.3f}")
+            self.max_level_input.setText(f"{self.signal_data_interp.max( ):.3f}")
+            self.image_item.setLevels((self.signal_data_interp.min( ), self.signal_data_interp.max( )))
         if preserve_plot_ranges and signal_xlim is not None and signal_ylim is not None:
-            self.signal_plot_widget.setXRange(signal_xlim[0], signal_xlim[1], padding=0)
-            self.signal_plot_widget.setYRange(signal_ylim[0], signal_ylim[1], padding=0)
+            self.signal_plot_widget.setXRange(signal_xlim [ 0 ], signal_xlim [ 1 ], padding = 0)
+            self.signal_plot_widget.setYRange(signal_ylim [ 0 ], signal_ylim [ 1 ], padding = 0)
         else:
-            self.signal_plot_widget.setXRange(self.x_values_interp.min(), self.x_values_interp.max(), padding=0)
-            self.signal_plot_widget.setYRange(self.y_values_interp.min(), self.y_values_interp.max(), padding=0)
+            self.signal_plot_widget.setXRange(self.x_values_interp.min( ), self.x_values_interp.max( ), padding = 0)
+            self.signal_plot_widget.setYRange(self.y_values_interp.min( ), self.y_values_interp.max( ), padding = 0)
         if preserve_plot_ranges and x_slice_xlim is not None and x_slice_ylim is not None:
-            self.x_slice_plot_widget.setXRange(x_slice_xlim[0], x_slice_xlim[1], padding=0.05)
-            self.x_slice_plot_widget.setYRange(x_slice_ylim[0], x_slice_ylim[1], padding=0.05)
+            self.x_slice_plot_widget.setXRange(x_slice_xlim [ 0 ], x_slice_xlim [ 1 ], padding = 0.05)
+            self.x_slice_plot_widget.setYRange(x_slice_ylim [ 0 ], x_slice_ylim [ 1 ], padding = 0.05)
         else:
-            self.x_slice_plot_widget.setXRange(self.current_y_values.min(), self.current_y_values.max(),
-                                               padding=0.05)
-            self.x_slice_plot_widget.setYRange(self.current_signal_data.min(), self.current_signal_data.max(),
-                                               padding=0.05)
+            self.x_slice_plot_widget.setXRange(self.current_y_values.min( ), self.current_y_values.max( ),
+                                               padding = 0.05)
+            self.x_slice_plot_widget.setYRange(self.current_signal_data.min( ), self.current_signal_data.max( ),
+                                               padding = 0.05)
         if preserve_plot_ranges and y_slice_xlim is not None and y_slice_ylim is not None:
-            self.y_slice_plot_widget.setXRange(y_slice_xlim[0], y_slice_xlim[1], padding=0.05)
-            self.y_slice_plot_widget.setYRange(y_slice_ylim[0], y_slice_ylim[1], padding=0.05)
+            self.y_slice_plot_widget.setXRange(y_slice_xlim [ 0 ], y_slice_xlim [ 1 ], padding = 0.05)
+            self.y_slice_plot_widget.setYRange(y_slice_ylim [ 0 ], y_slice_ylim [ 1 ], padding = 0.05)
         else:
-            self.y_slice_plot_widget.setXRange(self.current_x_values.min(), self.current_x_values.max(),
-                                               padding=0.05)
+            self.y_slice_plot_widget.setXRange(self.current_x_values.min( ), self.current_x_values.max( ),
+                                               padding = 0.05)
         if preserve_plot_ranges and y_slice_xlim is not None and y_slice_ylim is not None:
-            self.y_slice_plot_widget.setXRange(y_slice_xlim[0], y_slice_xlim[1], padding=0.05)
-            self.y_slice_plot_widget.setYRange(y_slice_ylim[0], y_slice_ylim[1], padding=0.05)
+            self.y_slice_plot_widget.setXRange(y_slice_xlim [ 0 ], y_slice_xlim [ 1 ], padding = 0.05)
+            self.y_slice_plot_widget.setYRange(y_slice_ylim [ 0 ], y_slice_ylim [ 1 ], padding = 0.05)
         else:
-            self.y_slice_plot_widget.setXRange(self.current_x_values.min(), self.current_x_values.max(),
-                                               padding=0.05)
-            self.y_slice_plot_widget.setYRange(self.current_signal_data.min(), self.current_signal_data.max(),
-                                               padding=0.05)
-        x_idx_raw = self.x_slider.value()
-        y_idx_raw = self.y_slider.value()
-        x_pos_val_raw = self.current_x_values[x_idx_raw]
-        y_pos_val_raw = self.current_y_values[y_idx_raw]
+            self.y_slice_plot_widget.setXRange(self.current_x_values.min( ), self.current_x_values.max( ),
+                                               padding = 0.05)
+            self.y_slice_plot_widget.setYRange(self.current_signal_data.min( ), self.current_signal_data.max( ),
+                                               padding = 0.05)
+        x_idx_raw = self.x_slider.value( )
+        y_idx_raw = self.y_slider.value( )
+        x_pos_val_raw = self.current_x_values [ x_idx_raw ]
+        y_pos_val_raw = self.current_y_values [ y_idx_raw ]
         self._original_y_slice_data_main_x = np.copy(self.current_x_values)
-        self._original_y_slice_data_main_y = np.copy(self.current_signal_data[y_idx_raw, :])
+        self._original_y_slice_data_main_y = np.copy(self.current_signal_data [ y_idx_raw, : ])
         self._original_x_slice_data_main = np.copy(self.current_y_values)
-        self._original_x_slice_data_main_y = np.copy(self.current_signal_data[:, x_idx_raw])
-        self.update_plots()
-        self._update_spline_button_text()
+        self._original_x_slice_data_main_y = np.copy(self.current_signal_data [ :, x_idx_raw ])
+        self.update_plots( )
+        self._update_spline_button_text( )
 
     def init_ui(self):
-        self.menu_bar = self.menuBar()
+        self.menu_bar = self.menuBar( )
         self.file_menu = self.menu_bar.addMenu("&File")
         import_data_action = QAction("&Import Data...", self)
         import_data_action.setShortcut("Ctrl+I")
@@ -1636,22 +1643,22 @@ class SignalPlotterApp(QMainWindow):
         axis_label_font.setPointSize(self.axis_label_font_size)
         tick_length = 10
         tick_text_offset = 5
-        self.tab_widget = QTabWidget()
-        self.main_plot_tab = QWidget()
+        self.tab_widget = QTabWidget( )
+        self.main_plot_tab = QWidget( )
         self.tab_widget.setTabsClosable(True)
         self.tab_widget.addTab(self.main_plot_tab, "Main Plots")
         self.tab_widget.tabCloseRequested.connect(self.close_tab)
-        self.tab_widget.tabBar().tabBarDoubleClicked.connect(self.rename_tab)
+        self.tab_widget.tabBar( ).tabBarDoubleClicked.connect(self.rename_tab)
         self.main_plot_tab_layout = QGridLayout(self.main_plot_tab)
-        self.signal_plot_widget = pg.PlotWidget()
-        self.signal_plot_widget.setLabel('bottom', self.axis_labels['signal_bottom'],
-                                         **{'font-size': f'{self.axis_label_font_size}pt'})
-        self.signal_plot_widget.setLabel('left', self.axis_labels['signal_left'],
-                                         **{'font-size': f'{self.axis_label_font_size}pt'})
+        self.signal_plot_widget = pg.PlotWidget( )
+        self.signal_plot_widget.setLabel('bottom', self.axis_labels [ 'signal_bottom' ],
+                                         **{ 'font-size': f'{self.axis_label_font_size}pt' })
+        self.signal_plot_widget.setLabel('left', self.axis_labels [ 'signal_left' ],
+                                         **{ 'font-size': f'{self.axis_label_font_size}pt' })
         self.signal_plot_widget.setBackground('w')
-        self.signal_plot_widget.getViewBox().enableAutoRange(axis=pg.ViewBox.XYAxes, enable=False)
-        self.signal_plot_widget.getViewBox().setMouseMode(pg.ViewBox.RectMode)
-        self.signal_plot_widget.getViewBox().setMouseEnabled(x=True, y=True)
+        self.signal_plot_widget.getViewBox( ).enableAutoRange(axis = pg.ViewBox.XYAxes, enable = False)
+        self.signal_plot_widget.getViewBox( ).setMouseMode(pg.ViewBox.RectMode)
+        self.signal_plot_widget.getViewBox( ).setMouseEnabled(x = True, y = True)
         bottom_axis = self.signal_plot_widget.getAxis('bottom')
         left_axis = self.signal_plot_widget.getAxis('left')
         bottom_axis.setTickFont(axis_scale_font)
@@ -1660,9 +1667,9 @@ class SignalPlotterApp(QMainWindow):
         left_axis.showMinorTicks = True
         bottom_axis.tickLength = tick_length
         left_axis.tickLength = tick_length
-        bottom_axis.setStyle(tickTextOffset=tick_text_offset)
-        left_axis.setStyle(tickTextOffset=tick_text_offset)
-        self.image_item = pg.ImageItem()
+        bottom_axis.setStyle(tickTextOffset = tick_text_offset)
+        left_axis.setStyle(tickTextOffset = tick_text_offset)
+        self.image_item = pg.ImageItem( )
         self.signal_plot_widget.addItem(self.image_item)
         colors_seismic_base = [
             (0, 0, 128, 255),
@@ -1674,29 +1681,29 @@ class SignalPlotterApp(QMainWindow):
             (128, 0, 0, 255)
         ]
         positions_seismic_base = np.linspace(0.0, 0.99, len(colors_seismic_base))
-        final_colors = colors_seismic_base + [(255, 255, 255, 255)]
+        final_colors = colors_seismic_base + [ (255, 255, 255, 255) ]
         final_positions = np.append(positions_seismic_base, 1.0)
         self.seismic_colormap = pg.ColorMap(final_positions, final_colors)
-        self.image_item.setLookupTable(self.seismic_colormap.getLookupTable())
-        self.cursor_x_line = pg.InfiniteLine(angle=90, movable=False,
-                                             pen=pg.mkPen('k', width=2, style=Qt.DotLine))
-        self.cursor_y_line = pg.InfiniteLine(angle=0, movable=False,
-                                             pen=pg.mkPen('k', width=2, style=Qt.DotLine))
+        self.image_item.setLookupTable(self.seismic_colormap.getLookupTable( ))
+        self.cursor_x_line = pg.InfiniteLine(angle = 90, movable = False,
+                                             pen = pg.mkPen('k', width = 1, style = Qt.DotLine))
+        self.cursor_y_line = pg.InfiniteLine(angle = 0, movable = False,
+                                             pen = pg.mkPen('k', width = 1, style = Qt.DotLine))
         self.signal_plot_widget.addItem(self.cursor_x_line)
         self.signal_plot_widget.addItem(self.cursor_y_line)
         self.cursor_x_line.setVisible(False)
         self.cursor_y_line.setVisible(False)
-        self.signal_plot_widget.scene().sigMouseMoved.connect(self.update_signal_cursor_pos)
-        vb_menu = self.signal_plot_widget.getPlotItem().getViewBox().menu
-        self.x_slice_plot_widget = pg.PlotWidget()
-        self.x_slice_plot_widget.setLabel('bottom', self.axis_labels['x_slice_bottom'],
-                                          **{'font-size': f'{self.axis_label_font_size}pt'})
-        self.x_slice_plot_widget.setLabel('left', self.axis_labels['x_slice_left'],
-                                          **{'font-size': f'{self.axis_label_font_size}pt'})
+        self.signal_plot_widget.scene( ).sigMouseMoved.connect(self.update_signal_cursor_pos)
+        vb_menu = self.signal_plot_widget.getPlotItem( ).getViewBox( ).menu
+        self.x_slice_plot_widget = pg.PlotWidget( )
+        self.x_slice_plot_widget.setLabel('bottom', self.axis_labels [ 'x_slice_bottom' ],
+                                          **{ 'font-size': f'{self.axis_label_font_size}pt' })
+        self.x_slice_plot_widget.setLabel('left', self.axis_labels [ 'x_slice_left' ],
+                                          **{ 'font-size': f'{self.axis_label_font_size}pt' })
         self.x_slice_plot_widget.setBackground('w')
-        self.x_slice_plot_widget.getViewBox().enableAutoRange(axis=pg.ViewBox.XYAxes, enable=False)
-        self.x_slice_plot_widget.getViewBox().setMouseMode(pg.ViewBox.RectMode)
-        self.x_slice_plot_widget.getViewBox().setMouseEnabled(x=True, y=True)
+        self.x_slice_plot_widget.getViewBox( ).enableAutoRange(axis = pg.ViewBox.XYAxes, enable = False)
+        self.x_slice_plot_widget.getViewBox( ).setMouseMode(pg.ViewBox.RectMode)
+        self.x_slice_plot_widget.getViewBox( ).setMouseEnabled(x = True, y = True)
         x_slice_bottom_axis = self.x_slice_plot_widget.getAxis('bottom')
         x_slice_left_axis = self.x_slice_plot_widget.getAxis('left')
         x_slice_bottom_axis.setTickFont(axis_scale_font)
@@ -1705,15 +1712,15 @@ class SignalPlotterApp(QMainWindow):
         x_slice_left_axis.showMinorTicks = True
         x_slice_bottom_axis.tickLength = tick_length
         x_slice_left_axis.tickLength = tick_text_offset
-        x_slice_bottom_axis.setStyle(tickTextOffset=tick_text_offset)
-        x_slice_left_axis.setStyle(tickTextOffset=tick_text_offset)
-        self.x_slice_curve = self.x_slice_plot_widget.plot(pen=pg.mkPen('b', width=self.current_slice_linewidth))
-        self.x_slice_legend = self.x_slice_plot_widget.addLegend()
+        x_slice_bottom_axis.setStyle(tickTextOffset = tick_text_offset)
+        x_slice_left_axis.setStyle(tickTextOffset = tick_text_offset)
+        self.x_slice_curve = self.x_slice_plot_widget.plot(pen = pg.mkPen('b', width = self.current_slice_linewidth))
+        self.x_slice_legend = self.x_slice_plot_widget.addLegend( )
         self._apply_legend_font_size(self.x_slice_legend, self.x_legend_font_size)
-        x_vb_menu = self.x_slice_plot_widget.getPlotItem().getViewBox().menu
+        x_vb_menu = self.x_slice_plot_widget.getPlotItem( ).getViewBox( ).menu
         self.change_x_linewidth_action = x_vb_menu.addAction("Change Line Thickness")
         self.change_x_linewidth_action.triggered.connect(lambda: self._show_linewidth_dialog(self.x_slice_plot_widget))
-        self.x_slice_plot_widget.scene().sigMouseMoved.connect(self.update_x_slice_cursor_pos)
+        self.x_slice_plot_widget.scene( ).sigMouseMoved.connect(self.update_x_slice_cursor_pos)
         self.x_hold_button = QPushButton("Hold")
         self.x_hold_button.setFont(label_font)
         self.x_hold_button.clicked.connect(self.hold_x_slice_plot)
@@ -1731,15 +1738,15 @@ class SignalPlotterApp(QMainWindow):
         self.x_fit_button.setFont(label_font)
         self.x_fit_button.setMinimumHeight(30)
         self.x_fit_button.clicked.connect(self._open_x_fitter_tab)
-        self.y_slice_plot_widget = pg.PlotWidget()
-        self.y_slice_plot_widget.setLabel('bottom', self.axis_labels['y_slice_bottom'],
-                                          **{'font-size': f'{self.axis_label_font_size}pt'})
-        self.y_slice_plot_widget.setLabel('left', self.axis_labels['y_slice_left'],
-                                          **{'font-size': f'{self.axis_label_font_size}pt'})
+        self.y_slice_plot_widget = pg.PlotWidget( )
+        self.y_slice_plot_widget.setLabel('bottom', self.axis_labels [ 'y_slice_bottom' ],
+                                          **{ 'font-size': f'{self.axis_label_font_size}pt' })
+        self.y_slice_plot_widget.setLabel('left', self.axis_labels [ 'y_slice_left' ],
+                                          **{ 'font-size': f'{self.axis_label_font_size}pt' })
         self.y_slice_plot_widget.setBackground('w')
-        self.y_slice_plot_widget.getViewBox().enableAutoRange(axis=pg.ViewBox.XYAxes, enable=False)
-        self.y_slice_plot_widget.getViewBox().setMouseMode(pg.ViewBox.RectMode)
-        self.y_slice_plot_widget.getViewBox().setMouseEnabled(x=True, y=True)
+        self.y_slice_plot_widget.getViewBox( ).enableAutoRange(axis = pg.ViewBox.XYAxes, enable = False)
+        self.y_slice_plot_widget.getViewBox( ).setMouseMode(pg.ViewBox.RectMode)
+        self.y_slice_plot_widget.getViewBox( ).setMouseEnabled(x = True, y = True)
         y_slice_bottom_axis = self.y_slice_plot_widget.getAxis('bottom')
         y_slice_left_axis = self.y_slice_plot_widget.getAxis('left')
         y_slice_bottom_axis.setTickFont(axis_scale_font)
@@ -1748,15 +1755,15 @@ class SignalPlotterApp(QMainWindow):
         y_slice_left_axis.showMinorTicks = True
         y_slice_bottom_axis.tickLength = tick_length
         y_slice_left_axis.tickLength = tick_length
-        y_slice_bottom_axis.setStyle(tickTextOffset=tick_text_offset)
-        y_slice_left_axis.setStyle(tickTextOffset=tick_text_offset)
-        self.y_slice_curve = self.y_slice_plot_widget.plot(pen=pg.mkPen('r', width=self.current_slice_linewidth))
-        self.y_slice_legend = self.y_slice_plot_widget.addLegend()
+        y_slice_bottom_axis.setStyle(tickTextOffset = tick_text_offset)
+        y_slice_left_axis.setStyle(tickTextOffset = tick_text_offset)
+        self.y_slice_curve = self.y_slice_plot_widget.plot(pen = pg.mkPen('r', width = self.current_slice_linewidth))
+        self.y_slice_legend = self.y_slice_plot_widget.addLegend( )
         self._apply_legend_font_size(self.y_slice_legend, self.y_legend_font_size)
-        y_vb_menu = self.y_slice_plot_widget.getPlotItem().getViewBox().menu
+        y_vb_menu = self.y_slice_plot_widget.getPlotItem( ).getViewBox( ).menu
         self.change_y_linewidth_action = y_vb_menu.addAction("Change Line Thickness...")
         self.change_y_linewidth_action.triggered.connect(lambda: self._show_linewidth_dialog(self.y_slice_plot_widget))
-        self.y_slice_plot_widget.scene().sigMouseMoved.connect(self.update_y_slice_cursor_pos)
+        self.y_slice_plot_widget.scene( ).sigMouseMoved.connect(self.update_y_slice_cursor_pos)
         self.y_hold_button = QPushButton("Hold")
         self.y_hold_button.setFont(label_font)
         self.y_hold_button.clicked.connect(self.hold_y_slice_plot)
@@ -1782,80 +1789,42 @@ class SignalPlotterApp(QMainWindow):
             lambda: self._open_fitter_tab(
                 self.y_slice_curve,
                 False,
-                self.y_fit_function_selector.currentText(),
-                self.axis_labels['y_slice_bottom'],
-                self.axis_labels['y_slice_left'],
-                self._strip_html_tags(self.axis_labels['signal_left']),
-                self.current_y_values[self.y_slider.value()],
-                self.y_unit_input.text(),
+                self.y_fit_function_selector.currentText( ),
+                self.axis_labels [ 'y_slice_bottom' ],
+                self.axis_labels [ 'y_slice_left' ],
+                self._strip_html_tags(self.axis_labels [ 'signal_left' ]),
+                self.current_y_values [ self.y_slider.value( ) ],
+                self.y_unit_input.text( ),
                 self.is_spline_corrected
             )
         )
         self.x_slider = QSlider(Qt.Horizontal)
         self.x_slider.setTickPosition(QSlider.TicksBelow)
         self.x_slider.valueChanged.connect(self.update_plots)
-        self.x_slider.setStyleSheet("""
-            QSlider::groove:horizontal {
-                border: 1px solid #bbb;
-                background: #e0e0e0;
-                height: 10px;
-                border-radius: 5px;
-            }
-            QSlider::handle:horizontal {
-                background: #3498db;
-                border: 1px solid #3498db;
-                width: 20px;
-                margin: -5px 0;
-                border-radius: 10px;
-            }
-            QSlider::sub-page:horizontal {
-                background: #2980b9;
-                border-radius: 5px;
-            }
-        """)
         self.y_slider = QSlider(Qt.Horizontal)
         self.y_slider.setTickPosition(QSlider.TicksBelow)
         self.y_slider.valueChanged.connect(self.update_plots)
-        self.y_slider.setStyleSheet("""
-            QSlider::groove:horizontal {
-                border: 1px solid #bbb;
-                background: #e0e0e0;
-                height: 10px;
-                border-radius: 5px;
-            }
-            QSlider::handle:horizontal {
-                background: #3498db;
-                border: 1px solid #3498db;
-                width: 20px;
-                margin: -5px 0;
-                border-radius: 10px;
-            }
-            QSlider::sub-page:horizontal {
-                background: #2980b9;
-                border-radius: 5px;
-            }
-        """)
         self.min_level_input = QLineEdit(self)
         self.min_level_input.setPlaceholderText("-0.1")
         self.min_level_input.setFont(label_font)
-        self.min_level_input.setValidator(QDoubleValidator())
+        self.min_level_input.setValidator(QDoubleValidator( ))
         self.min_level_input.editingFinished.connect(self.update_plots)
         self.min_level_input.setFixedWidth(100)
         self.max_level_input = QLineEdit(self)
         self.max_level_input.setFont(label_font)
-        self.max_level_input.setValidator(QDoubleValidator())
+        self.max_level_input.setValidator(QDoubleValidator( ))
         self.max_level_input.editingFinished.connect(self.update_plots)
         self.max_level_input.setFixedWidth(100)
         self.x_label = QLabel(f"Probe:")
         self.x_label.setFont(label_font)
         self.x_input = QLineEdit(self)
-        self.x_input.setValidator(QDoubleValidator())
+        self.x_input.setValidator(QDoubleValidator( ))
         self.x_input.setFixedWidth(100)
         self.x_input.editingFinished.connect(self.update_x_slider_from_input)
-        self.y_label = QLabel(f"Time delay:")
+        self.y_label = QLabel(f"Delay time:")
         self.y_label.setFont(label_font)
         self.y_input = QLineEdit(self)
-        self.y_input.setValidator(QDoubleValidator())
+        self.y_input.setValidator(QDoubleValidator( ))
         self.y_input.setFixedWidth(100)
         self.y_input.editingFinished.connect(self.update_y_slider_from_input)
         self.min_level_label = QLabel("Contour min:")
@@ -1868,36 +1837,36 @@ class SignalPlotterApp(QMainWindow):
         self.spline_baseline_button.setFont(label_font)
         self.spline_baseline_button.setMinimumHeight(30)
         self.spline_baseline_button.clicked.connect(self._toggle_spline_correction)
-        self.interp_method_label = QLabel("Interpolate probe axis")
+        self.interp_method_label = QLabel("Interpolate probe axis:")
         self.interp_method_combo = QComboBox(self)
-        self.interp_method_combo.addItems(["None", "linear", "cubic", "nearest"])
+        self.interp_method_combo.addItems([ "None", "linear", "cubic", "nearest" ])
         self.interp_method_combo.setFont(label_font)
         self.interp_method_combo.setMinimumHeight(30)
         self.interp_method_combo.currentIndexChanged.connect(self._apply_interpolation_to_all_plots)
         self.interp_multiplier_label = QLabel("")
         self.interp_multiplier_combo = QComboBox(self)
-        self.interp_multiplier_combo.addItems(["x1", "x2", "x3", "x5"])
+        self.interp_multiplier_combo.addItems([ "x1", "x2", "x3", "x5" ])
         self.interp_multiplier_combo.setFont(label_font)
         self.interp_multiplier_combo.setMinimumHeight(30)
         self.interp_multiplier_combo.currentIndexChanged.connect(self._apply_interpolation_to_all_plots)
 
-        self.global_fit_button = QPushButton("Global Fit")
+        self.global_fit_button = QPushButton("Open Global Fit Tab")
         self.global_fit_button.setFont(label_font)
         self.global_fit_button.setMinimumHeight(30)
         self.global_fit_button.clicked.connect(self._launch_global_fit_tab)
 
         self.main_plot_tab_layout.addWidget(self.signal_plot_widget, 0, 0, 2, 2)
-        x_slice_controls_layout = QHBoxLayout()
+        x_slice_controls_layout = QHBoxLayout( )
         x_slice_controls_layout.addWidget(self.x_hold_button)
         x_slice_controls_layout.addWidget(self.x_unit_input)
         x_slice_controls_layout.addWidget(self.x_clear_button)
         x_slice_controls_layout.addWidget(self.x_fit_button)
         x_slice_controls_layout.setSpacing(10)
-        x_slice_plot_and_buttons_layout = QVBoxLayout()
+        x_slice_plot_and_buttons_layout = QVBoxLayout( )
         x_slice_plot_and_buttons_layout.addWidget(self.x_slice_plot_widget)
         x_slice_plot_and_buttons_layout.addLayout(x_slice_controls_layout)
         self.main_plot_tab_layout.addLayout(x_slice_plot_and_buttons_layout, 0, 2, 1, 1)
-        y_slice_controls_layout = QHBoxLayout()
+        y_slice_controls_layout = QHBoxLayout( )
         y_slice_controls_layout.addWidget(self.y_hold_button)
         y_slice_controls_layout.addWidget(self.y_unit_input)
         y_slice_controls_layout.addWidget(self.y_clear_button)
@@ -1905,25 +1874,25 @@ class SignalPlotterApp(QMainWindow):
         y_slice_controls_layout.addWidget(self.y_fit_function_selector)
         y_slice_controls_layout.addWidget(self.y_fit_button)
         y_slice_controls_layout.setSpacing(10)
-        y_slice_plot_and_buttons_layout = QVBoxLayout()
+        y_slice_plot_and_buttons_layout = QVBoxLayout( )
         y_slice_plot_and_buttons_layout.addWidget(self.y_slice_plot_widget)
         y_slice_plot_and_buttons_layout.addLayout(y_slice_controls_layout)
         self.main_plot_tab_layout.addLayout(y_slice_plot_and_buttons_layout, 1, 2, 1, 1)
-        slider_controls_layout = QVBoxLayout()
+        slider_controls_layout = QVBoxLayout( )
 
-        x_slider_layout = QHBoxLayout()
+        x_slider_layout = QHBoxLayout( )
         x_slider_layout.addWidget(self.x_label)
         x_slider_layout.addWidget(self.x_input)
         x_slider_layout.addWidget(self.x_slider)
         slider_controls_layout.addLayout(x_slider_layout)
 
-        y_slider_layout = QHBoxLayout()
+        y_slider_layout = QHBoxLayout( )
         y_slider_layout.addWidget(self.y_label)
         y_slider_layout.addWidget(self.y_input)
         y_slider_layout.addWidget(self.y_slider)
         slider_controls_layout.addLayout(y_slider_layout)
 
-        level_inputs_layout = QHBoxLayout()
+        level_inputs_layout = QHBoxLayout( )
         level_inputs_layout.addWidget(self.min_level_label)
         level_inputs_layout.addWidget(self.min_level_input)
         level_inputs_layout.addSpacing(20)
@@ -1948,13 +1917,13 @@ class SignalPlotterApp(QMainWindow):
         self.main_plot_tab_layout.setRowStretch(2, 1)
         self.main_plot_tab_layout.setRowStretch(3, 0)
         self.main_layout.addWidget(self.tab_widget, 0, 0, 1, 1)
-        self._update_spline_button_text()
+        self._update_spline_button_text( )
 
     def update_x_slider_from_input(self):
         if not self.data_loaded:
             return
         try:
-            val = float(self.x_input.text())
+            val = float(self.x_input.text( ))
             closest_index = np.argmin(np.abs(self.current_x_values - val))
             self.x_slider.setValue(closest_index)
         except ValueError:
@@ -1964,7 +1933,7 @@ class SignalPlotterApp(QMainWindow):
         if not self.data_loaded:
             return
         try:
-            val = float(self.y_input.text())
+            val = float(self.y_input.text( ))
             closest_index = np.argmin(np.abs(self.current_y_values - val))
             self.y_slider.setValue(closest_index)
         except ValueError:
@@ -1974,26 +1943,26 @@ class SignalPlotterApp(QMainWindow):
         if not self.data_loaded or self.current_signal_data is None:
             QMessageBox.warning(self, "No Data", "Please import a dataset before running a global fit.")
             return
-        x_axis_label, x_axis_unit = _parse_label_and_unit(self.axis_labels['signal_bottom'])
-        y_axis_label, y_axis_unit = _parse_label_and_unit(self.axis_labels['signal_left'])
+        x_axis_label, x_axis_unit = _parse_label_and_unit(self.axis_labels [ 'signal_bottom' ])
+        y_axis_label, y_axis_unit = _parse_label_and_unit(self.axis_labels [ 'signal_left' ])
 
         global_fit_tab = GlobalFitApp(
-            x_axis_data=self.current_x_values,
-            y_axis_data=self.current_y_values,
-            two_d_spectrum_data=self.current_signal_data,
-            parent=self.tab_widget,
-            x_axis_label=x_axis_label,
-            y_axis_label=y_axis_label,
-            x_axis_unit=x_axis_unit,
-            y_axis_unit=y_axis_unit,
-            font_size=self.axis_label_font_size
+            x_axis_data = self.current_x_values,
+            y_axis_data = self.current_y_values,
+            two_d_spectrum_data = self.current_signal_data,
+            parent = self.tab_widget,
+            x_axis_label = x_axis_label,
+            y_axis_label = y_axis_label,
+            x_axis_unit = x_axis_unit,
+            y_axis_unit = y_axis_unit,
+            font_size = self.axis_label_font_size
         )
 
         tab_index = self.tab_widget.addTab(global_fit_tab, "Global Fit")
         self.tab_widget.setCurrentIndex(tab_index)
-        self.active_fitter_tabs.append({'widget': global_fit_tab, 'tab_index': tab_index})
+        self.active_fitter_tabs.append({ 'widget': global_fit_tab, 'tab_index': tab_index })
         global_fit_tab.destroyed.connect(partial(self._remove_fitter_tab, global_fit_tab))
-        self._set_data_modified()
+        self._set_data_modified( )
 
     def _get_interpolated_1d_data(self, original_x, original_y, method, multiplier):
         if method == "None" or len(original_x) < 2:
@@ -2002,9 +1971,9 @@ class SignalPlotterApp(QMainWindow):
             target_n_points = int(len(original_x) * multiplier)
             if target_n_points < 2:
                 target_n_points = 2
-            x_interp = np.linspace(original_x.min(), original_x.max(), target_n_points)
-            f_interp = interp1d(original_x, original_y, kind=method,
-                                fill_value="extrapolate")
+            x_interp = np.linspace(original_x.min( ), original_x.max( ), target_n_points)
+            f_interp = interp1d(original_x, original_y, kind = method,
+                                fill_value = "extrapolate")
             y_interp = f_interp(x_interp)
             return x_interp, y_interp
         except Exception as e:
@@ -2012,17 +1981,17 @@ class SignalPlotterApp(QMainWindow):
             return np.copy(original_x), np.copy(original_y)
 
     def _apply_interpolation_to_all_plots(self):
-        self._current_interp_method = self.interp_method_combo.currentText()
-        self._current_interp_multiplier = int(self.interp_multiplier_combo.currentText().replace('x', ''))
-        self.update_plots()
+        self._current_interp_method = self.interp_method_combo.currentText( )
+        self._current_interp_multiplier = int(self.interp_multiplier_combo.currentText( ).replace('x', ''))
+        self.update_plots( )
         print(
             f"Applying interpolation to fitter tabs: Method={self._current_interp_method}, Multiplier={self._current_interp_multiplier}")
         for tab_info in self.active_fitter_tabs:
-            fitter_app_instance = tab_info['widget']
+            fitter_app_instance = tab_info [ 'widget' ]
             if isinstance(fitter_app_instance, GaussianFitterApp):
                 fitter_app_instance.apply_interpolation_settings(self._current_interp_method,
                                                                  self._current_interp_multiplier)
-        self._set_data_modified()
+        self._set_data_modified( )
 
     def rename_tab(self, index):
         if index == 0:
@@ -2032,69 +2001,70 @@ class SignalPlotterApp(QMainWindow):
         if ok and new_name:
             self.tab_widget.setTabText(index, new_name)
             self.tab_widget.widget(index).setObjectName(new_name)
-            self._set_data_modified()
+            self._set_data_modified( )
 
     def close_tab(self, index):
         if index == 0:
-            QMessageBox.information(self, "Cannot Close Tab", "Sorry, the main plot window cannot be closed.")
+            QMessageBox.information(self, "Cannot Close Tab", "The main plot window cannot be closed.")
             return
+
         widget = self.tab_widget.widget(index)
         if widget is not None:
             is_fitter_tab = False
             for i, tab_info in enumerate(self.active_fitter_tabs):
-                if tab_info['widget'] == widget:
+                if tab_info [ 'widget' ] == widget:
                     self.active_fitter_tabs.pop(i)
                     is_fitter_tab = True
                     break
             self.tab_widget.removeTab(index)
-            widget.deleteLater()
-            self._set_data_modified()
+            widget.deleteLater( )
+            self._set_data_modified( )
 
     def _apply_legend_font_size(self, legend_item, new_size):
         if legend_item:
             for sample, label_item in legend_item.items:
-                font = label_item.font()
+                font = label_item.font( )
                 font.setPointSize(new_size)
                 label_item.setFont(font)
 
     def _show_linewidth_dialog(self, plot_widget):
-        dialog = LineThicknessDialog(self, initial_thickness=self.current_slice_linewidth)
-        if dialog.exec_() == QDialog.Accepted:
-            new_thickness = dialog.get_thickness()
+        dialog = LineThicknessDialog(self, initial_thickness = self.current_slice_linewidth)
+        if dialog.exec_( ) == QDialog.Accepted:
+            new_thickness = dialog.get_thickness( )
             self.current_slice_linewidth = new_thickness
             if plot_widget == self.x_slice_plot_widget:
-                current_pen = self.x_slice_curve.opts['pen']
+                current_pen = self.x_slice_curve.opts [ 'pen' ]
                 self.x_slice_curve.setPen(
-                    pg.mkPen(current_pen.color(), width=new_thickness, style=current_pen.style()))
+                    pg.mkPen(current_pen.color( ), width = new_thickness, style = current_pen.style( )))
             elif plot_widget == self.y_slice_plot_widget:
-                current_pen = self.y_slice_curve.opts['pen']
+                current_pen = self.y_slice_curve.opts [ 'pen' ]
                 self.y_slice_curve.setPen(
-                    pg.mkPen(current_pen.color(), width=new_thickness, style=old_pen.style()))
-            for item in plot_widget.listDataItems():
+                    pg.mkPen(current_pen.color( ), width = new_thickness, style = old_pen.style( )))
+            for item in plot_widget.listDataItems( ):
                 if (plot_widget == self.x_slice_plot_widget and item == self.x_slice_curve) or \
                         (plot_widget == self.y_slice_plot_widget and item == self.y_slice_curve):
                     continue
                 if item.opts.get('pen') is not None:
-                    old_pen = item.opts['pen']
-                    new_pen = pg.mkPen(old_pen.color(), width=new_thickness, style=old_pen.style())
+                    old_pen = item.opts [ 'pen' ]
+                    new_pen = pg.mkPen(old_pen.color( ), width = new_thickness, style = old_pen.style( ))
                     item.setPen(new_pen)
-            self._set_data_modified()
+            self._set_data_modified( )
 
     def update_plots(self):
         if not self.data_loaded:
             self.image_item.setImage(np.zeros((2, 2)).T)
             self.image_item.setRect(pg.QtCore.QRectF(0, 0, 1, 1))
-            self.signal_plot_widget.setXRange(0, 1, padding=0)
-            self.signal_plot_widget.setYRange(0, 1, padding=0)
-            self.x_slice_curve.setData([], [])
-            self.y_slice_curve.setData([], [])
-            self.x_slice_plot_widget.setXRange(0, 1, padding=0.05)
-            self.x_slice_plot_widget.setYRange(0, 1, padding=0.05)
-            self.y_slice_plot_widget.setXRange(0, 1, padding=0.05)
-            self.y_slice_plot_widget.setYRange(0, 1, padding=0.05)
+            self.signal_plot_widget.setXRange(0, 1, padding = 0)
+            self.signal_plot_widget.setYRange(0, 1, padding = 0)
+            self.x_slice_curve.setData([ ], [ ])
+            self.y_slice_curve.setData([ ], [ ])
+            self.x_slice_plot_widget.setXRange(0, 1, padding = 0.05)
+            self.x_slice_plot_widget.setYRange(0, 1, padding = 0.05)
+            self.y_slice_plot_widget.setXRange(0, 1, padding = 0.05)
+            self.y_slice_plot_widget.setYRange(0, 1, padding = 0.05)
             self.x_label.setText(f"Probe:")
             self.x_input.setText("-")
-            self.y_label.setText(f"Time delay:")
+            self.y_label.setText(f"Delay time:")
             self.y_input.setText("-")
             self.cursor_x_line.setVisible(False)
             self.cursor_y_line.setVisible(False)
@@ -2139,22 +2109,22 @@ class SignalPlotterApp(QMainWindow):
         self.interp_method_combo.setEnabled(True)
         self.interp_multiplier_combo.setEnabled(True)
         self.global_fit_button.setEnabled(True)
-        x_idx_raw = self.x_slider.value()
-        y_idx_raw = self.y_slider.value()
-        x_pos_val_raw = self.current_x_values[x_idx_raw]
-        y_pos_val_raw = self.current_y_values[y_idx_raw]
+        x_idx_raw = self.x_slider.value( )
+        y_idx_raw = self.y_slider.value( )
+        x_pos_val_raw = self.current_x_values [ x_idx_raw ]
+        y_pos_val_raw = self.current_y_values [ y_idx_raw ]
 
         x_val_display = x_pos_val_raw
         y_val_display = y_pos_val_raw
 
         self.x_label.setText(f"Probe:")
         self.x_input.setText(f"{x_pos_val_raw:.1f}")
-        self.y_label.setText(f"Time delay:")
+        self.y_label.setText(f"Delay time:")
         self.y_input.setText(f"{y_pos_val_raw:.1f}")
         original_y_slice_x_data = self.current_x_values
-        original_y_slice_y_data = self.current_signal_data[y_idx_raw, :]
+        original_y_slice_y_data = self.current_signal_data [ y_idx_raw, : ]
         original_x_slice_x_data = self.current_y_values
-        original_x_slice_y_data = self.current_signal_data[:, x_idx_raw]
+        original_x_slice_y_data = self.current_signal_data [ :, x_idx_raw ]
         interp_x_slice_x, interp_x_slice_y = original_x_slice_x_data, original_x_slice_y_data
         interp_y_slice_x, interp_y_slice_y = self._get_interpolated_1d_data(
             original_y_slice_x_data, original_y_slice_y_data,
@@ -2162,30 +2132,30 @@ class SignalPlotterApp(QMainWindow):
         )
         self.y_slice_curve.setData(interp_y_slice_x, interp_y_slice_y)
         self.x_slice_curve.setData(interp_x_slice_x, interp_x_slice_y)
-        vb_y_slice = self.y_slice_plot_widget.getViewBox()
-        x_auto_y_slice, y_auto_y_slice = vb_y_slice.autoRangeEnabled()
+        vb_y_slice = self.y_slice_plot_widget.getViewBox( )
+        x_auto_y_slice, y_auto_y_slice = vb_y_slice.autoRangeEnabled( )
         if x_auto_y_slice:
-            self.y_slice_plot_widget.setXRange(interp_y_slice_x.min(), interp_y_slice_x.max(),
-                                               padding=0.05)
+            self.y_slice_plot_widget.setXRange(interp_y_slice_x.min( ), interp_y_slice_x.max( ),
+                                               padding = 0.05)
         if y_auto_y_slice:
-            self.y_slice_plot_widget.setYRange(interp_y_slice_y.min(), interp_y_slice_y.max(),
-                                               padding=0.05)
-        vb_x_slice = self.x_slice_plot_widget.getViewBox()
-        x_auto_x_slice, y_auto_x_slice = vb_x_slice.autoRangeEnabled()
+            self.y_slice_plot_widget.setYRange(interp_y_slice_y.min( ), interp_y_slice_y.max( ),
+                                               padding = 0.05)
+        vb_x_slice = self.x_slice_plot_widget.getViewBox( )
+        x_auto_x_slice, y_auto_x_slice = vb_x_slice.autoRangeEnabled( )
         if x_auto_x_slice:
-            self.x_slice_plot_widget.setXRange(interp_x_slice_x.min(), interp_x_slice_x.max(),
-                                               padding=0.05)
+            self.x_slice_plot_widget.setXRange(interp_x_slice_x.min( ), interp_x_slice_x.max( ),
+                                               padding = 0.05)
         if y_auto_x_slice:
-            self.x_slice_plot_widget.setYRange(interp_x_slice_y.min(), interp_x_slice_y.max(),
-                                               padding=0.05)
+            self.x_slice_plot_widget.setYRange(interp_x_slice_y.min( ), interp_x_slice_y.max( ),
+                                               padding = 0.05)
         try:
-            min_level = float(self.min_level_input.text())
+            min_level = float(self.min_level_input.text( ))
         except ValueError:
-            min_level = self.signal_data_interp.min()
+            min_level = self.signal_data_interp.min( )
         try:
-            max_level = float(self.max_level_input.text())
+            max_level = float(self.max_level_input.text( ))
         except ValueError:
-            max_level = self.signal_data_interp.max()
+            max_level = self.signal_data_interp.max( )
         if min_level > max_level:
             min_level, max_level = max_level, min_level
         self.image_item.setLevels((min_level, max_level))
@@ -2200,10 +2170,10 @@ class SignalPlotterApp(QMainWindow):
             self.cursor_pos_label.setText("Cursor: (X: -, Y: -)")
             return
         pos = evt
-        if self.signal_plot_widget.sceneBoundingRect().contains(pos):
+        if self.signal_plot_widget.sceneBoundingRect( ).contains(pos):
             mousePoint = self.signal_plot_widget.plotItem.vb.mapSceneToView(pos)
-            x_val_display = mousePoint.x()
-            y_val_display = mousePoint.y()
+            x_val_display = mousePoint.x( )
+            y_val_display = mousePoint.y( )
             self.cursor_x_line.setVisible(True)
             self.cursor_y_line.setVisible(True)
             self.cursor_x_line.setPos(x_val_display)
@@ -2217,10 +2187,10 @@ class SignalPlotterApp(QMainWindow):
     def update_x_slice_cursor_pos(self, evt):
         if not self.data_loaded: return
         pos = evt
-        if self.x_slice_plot_widget.sceneBoundingRect().contains(pos):
+        if self.x_slice_plot_widget.sceneBoundingRect( ).contains(pos):
             mousePoint = self.x_slice_plot_widget.plotItem.vb.mapSceneToView(pos)
-            y_val_current = mousePoint.x()
-            amp_val = mousePoint.y()
+            y_val_current = mousePoint.x( )
+            amp_val = mousePoint.y( )
             self.cursor_pos_label.setText(f"X-Slice Cursor: ({y_val_current:.2f},{amp_val:.2g})")
         else:
             self.cursor_pos_label.setText("Cursor: (X: -, Y: -)")
@@ -2228,10 +2198,10 @@ class SignalPlotterApp(QMainWindow):
     def update_y_slice_cursor_pos(self, evt):
         if not self.data_loaded: return
         pos = evt
-        if self.y_slice_plot_widget.sceneBoundingRect().contains(pos):
+        if self.y_slice_plot_widget.sceneBoundingRect( ).contains(pos):
             mousePoint = self.y_slice_plot_widget.plotItem.vb.mapSceneToView(pos)
-            x_val_current = mousePoint.x()
-            amp_val = mousePoint.y()
+            x_val_current = mousePoint.x( )
+            amp_val = mousePoint.y( )
             self.cursor_pos_label.setText(f"Y-Slice Cursor: ({x_val_current:.2f}, {amp_val:.2g})")
         else:
             self.cursor_pos_label.setText("Cursor: (X: -, Y: -)")
@@ -2250,84 +2220,84 @@ class SignalPlotterApp(QMainWindow):
 
     def _strip_html_tags(self, text):
         text = re.sub(r'<sup[^>]*>.*?</sup>', '', text)
-        text = re.sub(r'<sub[^>]*>.*?<sub>', '', text)
+        text = re.sub(r'<sub[^>]*>.*?</sub>', '', text)
         text = text.replace('<sup>', '').replace('</sup>', '')
         text = text.replace('<sub>', '').replace('</sub>', '')
-        text = re.sub(r'\[.*?\]', '', text).strip()
+        text = re.sub(r'\[.*?\]', '', text).strip( )
         return text
 
     def hold_x_slice_plot(self):
         if not self.data_loaded: return
-        x_idx_raw = self.x_slider.value()
-        x_pos_val = self.current_x_values[x_idx_raw]
+        x_idx_raw = self.x_slider.value( )
+        x_pos_val = self.current_x_values [ x_idx_raw ]
         self.held_x_slices_count += 1
-        x_data = self.x_slice_curve.getData()[0]
-        y_data = self.x_slice_curve.getData()[1]
+        x_data = self.x_slice_curve.getData( ) [ 0 ]
+        y_data = self.x_slice_curve.getData( ) [ 1 ]
         color_index = (self.held_x_slices_count - 1) % len(self.plot_colors)
-        color = self.plot_colors[color_index]
-        pen = pg.mkPen(color, width=self.current_slice_linewidth, style=Qt.SolidLine)
-        unit_text = self.x_unit_input.text().strip()
+        color = self.plot_colors [ color_index ]
+        pen = pg.mkPen(color, width = self.current_slice_linewidth, style = Qt.SolidLine)
+        unit_text = self.x_unit_input.text( ).strip( )
         formatted_unit_text = self._format_unit_for_display(unit_text)
         if formatted_unit_text:
             name = f'{x_pos_val:.0f} {formatted_unit_text}'
         else:
             name = f'{x_pos_val:.0f}'
-        self.x_slice_plot_widget.plot(x_data, y_data, pen=pen, name=name)
-        self._set_data_modified()
+        self.x_slice_plot_widget.plot(x_data, y_data, pen = pen, name = name)
+        self._set_data_modified( )
 
     def clear_x_slice_plots(self):
-        items_to_remove = [item for item in self.x_slice_plot_widget.listDataItems() if item != self.x_slice_curve]
+        items_to_remove = [ item for item in self.x_slice_plot_widget.listDataItems( ) if item != self.x_slice_curve ]
         if items_to_remove:
             for item in items_to_remove:
                 self.x_slice_plot_widget.removeItem(item)
             self.held_x_slices_count = 0
-            self._set_data_modified()
+            self._set_data_modified( )
 
     def hold_y_slice_plot(self):
         if not self.data_loaded: return
-        y_idx_raw = self.y_slider.value()
-        y_pos_val = self.current_y_values[y_idx_raw]
+        y_idx_raw = self.y_slider.value( )
+        y_pos_val = self.current_y_values [ y_idx_raw ]
         self.held_y_slices_count += 1
-        x_data = self.y_slice_curve.getData()[0]
-        y_data = self.y_slice_curve.getData()[1]
+        x_data = self.y_slice_curve.getData( ) [ 0 ]
+        y_data = self.y_slice_curve.getData( ) [ 1 ]
         color_index = (self.held_y_slices_count - 1) % len(self.plot_colors)
-        color = self.plot_colors[color_index]
-        pen = pg.mkPen(color, width=self.current_slice_linewidth, style=Qt.SolidLine)
-        unit_text = self.y_unit_input.text().strip()
+        color = self.plot_colors [ color_index ]
+        pen = pg.mkPen(color, width = self.current_slice_linewidth, style = Qt.SolidLine)
+        unit_text = self.y_unit_input.text( ).strip( )
         formatted_unit_text = self._format_unit_for_display(unit_text)
         if formatted_unit_text:
             name = f'{y_pos_val:.0f} {formatted_unit_text}'
         else:
             name = f'{y_pos_val:.0f}'
-        self.y_slice_plot_widget.plot(x_data, y_data, pen=pen, name=name)
-        self._set_data_modified()
+        self.y_slice_plot_widget.plot(x_data, y_data, pen = pen, name = name)
+        self._set_data_modified( )
 
     def clear_y_slice_plots(self):
-        items_to_remove = [item for item in self.y_slice_plot_widget.listDataItems() if item != self.y_slice_curve]
+        items_to_remove = [ item for item in self.y_slice_plot_widget.listDataItems( ) if item != self.y_slice_curve ]
         if items_to_remove:
             for item in items_to_remove:
                 self.y_slice_plot_widget.removeItem(item)
             self.held_y_slices_count = 0
-            self._set_data_modified()
+            self._set_data_modified( )
 
     def spline_baseline_correction(self, data, probe_wn):
-        baseline = np.zeros_like(data, dtype=float)
-        for i in range(data.shape[0]):
+        baseline = np.zeros_like(data, dtype = float)
+        for i in range(data.shape [ 0 ]):
             if len(probe_wn) >= 2:
                 try:
-                    valid_mask = np.isfinite(data[i, :])
+                    valid_mask = np.isfinite(data [ i, : ])
                     if np.sum(valid_mask) >= 2:
-                        spline = UnivariateSpline(probe_wn[valid_mask], data[i, valid_mask])
-                        baseline[i, :] = spline(probe_wn)
+                        spline = UnivariateSpline(probe_wn [ valid_mask ], data [ i, valid_mask ])
+                        baseline [ i, : ] = spline(probe_wn)
                     else:
                         print(f"Not enough valid data points for spline in row {i}. Skipping spline for this row.")
-                        baseline[i, :] = 0.0
+                        baseline [ i, : ] = 0.0
                 except Exception as e:
                     print(f"Error during spline calculation for row {i}: {e}")
-                    baseline[i, :] = 0.0
+                    baseline [ i, : ] = 0.0
             else:
                 print(f"Not enough data points for spline in row {i}. Skipping spline for this row.")
-                baseline[i, :] = 0.0
+                baseline [ i, : ] = 0.0
         corrected_data = data - baseline
         return corrected_data
 
@@ -2335,29 +2305,29 @@ class SignalPlotterApp(QMainWindow):
         if not self.data_loaded:
             QMessageBox.warning(self, "No Data", "Please import data before applying spline baseline.")
             return
-        current_min_level = float(self.min_level_input.text()) if self.min_level_input.text() else None
-        current_max_level = float(self.max_level_input.text()) if self.max_level_input.text() else None
+        current_min_level = float(self.min_level_input.text( )) if self.min_level_input.text( ) else None
+        current_max_level = float(self.max_level_input.text( )) if self.max_level_input.text( ) else None
         current_signal_xlim = None
         current_signal_ylim = None
         if self.signal_plot_widget.plotItem.vb:
-            signal_view_range = self.signal_plot_widget.plotItem.vb.viewRange()
+            signal_view_range = self.signal_plot_widget.plotItem.vb.viewRange( )
             if signal_view_range and len(signal_view_range) == 2:
-                current_signal_xlim = signal_view_range[0]
-                current_signal_ylim = signal_view_range[1]
+                current_signal_xlim = signal_view_range [ 0 ]
+                current_signal_ylim = signal_view_range [ 1 ]
         current_x_slice_xlim = None
         current_x_slice_ylim = None
         if self.x_slice_plot_widget.plotItem.vb:
-            x_slice_view_range = self.x_slice_plot_widget.plotItem.vb.viewRange()
+            x_slice_view_range = self.x_slice_plot_widget.plotItem.vb.viewRange( )
             if x_slice_view_range and len(x_slice_view_range) == 2:
-                current_x_slice_xlim = x_slice_view_range[0]
-                current_x_slice_ylim = x_slice_view_range[1]
+                current_x_slice_xlim = x_slice_view_range [ 0 ]
+                current_x_slice_ylim = x_slice_view_range [ 1 ]
         current_y_slice_xlim = None
         current_y_slice_ylim = None
         if self.y_slice_plot_widget.plotItem.vb:
-            y_slice_view_range = self.y_slice_plot_widget.plotItem.vb.viewRange()
+            y_slice_view_range = self.y_slice_plot_widget.plotItem.vb.viewRange( )
             if y_slice_view_range and len(y_slice_view_range) == 2:
-                current_y_slice_xlim = y_slice_view_range[0]
-                current_y_slice_ylim = y_slice_view_range[1]
+                current_y_slice_xlim = y_slice_view_range [ 0 ]
+                current_y_slice_ylim = y_slice_view_range [ 1 ]
         if not self.is_spline_corrected:
             try:
                 corrected_data = self.spline_baseline_correction(
@@ -2365,37 +2335,37 @@ class SignalPlotterApp(QMainWindow):
                 )
                 self.current_signal_data = corrected_data
                 self.is_spline_corrected = True
-                self._set_data_modified()
-                self._refresh_all_plots(preserve_contour_levels=True,
-                                        min_level=current_min_level,
-                                        max_level=current_max_level,
-                                        preserve_plot_ranges=True,
-                                        signal_xlim=current_signal_xlim,
-                                        signal_ylim=current_signal_ylim,
-                                        x_slice_xlim=current_x_slice_xlim,
-                                        x_slice_ylim=current_x_slice_ylim,
-                                        y_slice_xlim=current_y_slice_xlim,
-                                        y_slice_ylim=current_y_slice_ylim)
+                self._set_data_modified( )
+                self._refresh_all_plots(preserve_contour_levels = True,
+                                        min_level = current_min_level,
+                                        max_level = current_max_level,
+                                        preserve_plot_ranges = True,
+                                        signal_xlim = current_signal_xlim,
+                                        signal_ylim = current_signal_ylim,
+                                        x_slice_xlim = current_x_slice_xlim,
+                                        x_slice_ylim = current_x_slice_ylim,
+                                        y_slice_xlim = current_y_slice_xlim,
+                                        y_slice_ylim = current_y_slice_ylim)
             except Exception as e:
                 print(f"Failed to apply spline baseline: {e}")
-                self.current_signal_data = self._initial_raw_signal_data.copy()
+                self.current_signal_data = self._initial_raw_signal_data.copy( )
                 self.is_spline_corrected = False
-                self._refresh_all_plots()
+                self._refresh_all_plots( )
         else:
-            self.current_signal_data = self._initial_raw_signal_data.copy()
+            self.current_signal_data = self._initial_raw_signal_data.copy( )
             self.is_spline_corrected = False
-            self._set_data_modified()
-            self._refresh_all_plots(preserve_contour_levels=True,
-                                    min_level=current_min_level,
-                                    max_level=current_max_level,
-                                    preserve_plot_ranges=True,
-                                    signal_xlim=current_signal_xlim,
-                                    signal_ylim=current_signal_ylim,
-                                    x_slice_xlim=current_x_slice_xlim,
-                                    x_slice_ylim=current_x_slice_ylim,
-                                    y_slice_xlim=current_y_slice_xlim,
-                                    y_slice_ylim=current_y_slice_ylim)
-        self._update_spline_button_text()
+            self._set_data_modified( )
+            self._refresh_all_plots(preserve_contour_levels = True,
+                                    min_level = current_min_level,
+                                    max_level = current_max_level,
+                                    preserve_plot_ranges = True,
+                                    signal_xlim = current_signal_xlim,
+                                    signal_ylim = current_signal_ylim,
+                                    x_slice_xlim = current_x_slice_xlim,
+                                    x_slice_ylim = current_x_slice_ylim,
+                                    y_slice_xlim = current_y_slice_xlim,
+                                    y_slice_ylim = current_y_slice_ylim)
+        self._update_spline_button_text( )
 
     def _update_spline_button_text(self):
         if self.is_spline_corrected:
@@ -2404,27 +2374,27 @@ class SignalPlotterApp(QMainWindow):
             self.spline_baseline_button.setText("Use Spline Baseline")
 
     def _show_edit_names_dialog(self):
-        dialog = EditNamesDialog(self, current_labels=self.axis_labels)
-        if dialog.exec_() == QDialog.Accepted:
-            new_labels = dialog.get_names()
-            if any(self.axis_labels[key] != new_labels[key] for key in self.axis_labels):
+        dialog = EditNamesDialog(self, current_labels = self.axis_labels)
+        if dialog.exec_( ) == QDialog.Accepted:
+            new_labels = dialog.get_names( )
+            if any(self.axis_labels [ key ] != new_labels [ key ] for key in self.axis_labels):
                 self.axis_labels.update(new_labels)
-                self._apply_axis_labels()
-                self._set_data_modified()
+                self._apply_axis_labels( )
+                self._set_data_modified( )
 
     def _apply_axis_labels(self):
-        self.signal_plot_widget.setLabel('bottom', self.axis_labels['signal_bottom'],
-                                         **{'font-size': f'{self.axis_label_font_size}pt'})
-        self.signal_plot_widget.setLabel('left', self.axis_labels['signal_left'],
-                                         **{'font-size': f'{self.axis_label_font_size}pt'})
-        self.x_slice_plot_widget.setLabel('bottom', self.axis_labels['x_slice_bottom'],
-                                          **{'font-size': f'{self.axis_label_font_size}pt'})
-        self.x_slice_plot_widget.setLabel('left', self.axis_labels['x_slice_left'],
-                                          **{'font-size': f'{self.axis_label_font_size}pt'})
-        self.y_slice_plot_widget.setLabel('bottom', self.axis_labels['y_slice_bottom'],
-                                          **{'font-size': f'{self.axis_label_font_size}pt'})
-        self.y_slice_plot_widget.setLabel('left', self.axis_labels['y_slice_left'],
-                                          **{'font-size': f'{self.axis_label_font_size}pt'})
+        self.signal_plot_widget.setLabel('bottom', self.axis_labels [ 'signal_bottom' ],
+                                         **{ 'font-size': f'{self.axis_label_font_size}pt' })
+        self.signal_plot_widget.setLabel('left', self.axis_labels [ 'signal_left' ],
+                                         **{ 'font-size': f'{self.axis_label_font_size}pt' })
+        self.x_slice_plot_widget.setLabel('bottom', self.axis_labels [ 'x_slice_bottom' ],
+                                          **{ 'font-size': f'{self.axis_label_font_size}pt' })
+        self.x_slice_plot_widget.setLabel('left', self.axis_labels [ 'x_slice_left' ],
+                                          **{ 'font-size': f'{self.axis_label_font_size}pt' })
+        self.y_slice_plot_widget.setLabel('bottom', self.axis_labels [ 'y_slice_bottom' ],
+                                          **{ 'font-size': f'{self.axis_label_font_size}pt' })
+        self.y_slice_plot_widget.setLabel('left', self.axis_labels [ 'y_slice_left' ],
+                                          **{ 'font-size': f'{self.axis_label_font_size}pt' })
 
     def on_import_data_action_triggered(self):
         if self._data_modified:
@@ -2433,7 +2403,7 @@ class SignalPlotterApp(QMainWindow):
                                          QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
                                          QMessageBox.Save)
             if reply == QMessageBox.Save:
-                save_successful = self._save_project()
+                save_successful = self._save_project( )
                 if not save_successful:
                     return
             elif reply == QMessageBox.Cancel:
@@ -2446,12 +2416,12 @@ class SignalPlotterApp(QMainWindow):
         )
         if file_path:
             try:
-                df = pd.read_csv(file_path, header=None)
-                if df.shape[0] < 2 or df.shape[1] < 2:
+                df = pd.read_csv(file_path, header = None)
+                if df.shape [ 0 ] < 2 or df.shape [ 1 ] < 2:
                     raise ValueError("Data file must have at least 2 rows and 2 columns for X, Y, Z extraction.")
-                y_values = df.iloc[1:, 0].values.astype(float)
-                x_values = df.iloc[0, 1:].values.astype(float)
-                z_data = df.iloc[1:, 1:].values.astype(float)
+                y_values = df.iloc [ 1:, 0 ].values.astype(float)
+                x_values = df.iloc [ 0, 1: ].values.astype(float)
+                z_data = df.iloc [ 1:, 1: ].values.astype(float)
                 self._load_data_into_plots(x_values, y_values, z_data)
                 QMessageBox.information(self, "File Processed",
                                         f"File '{file_path}' loaded and data parsed successfully.\n"
@@ -2461,66 +2431,66 @@ class SignalPlotterApp(QMainWindow):
                 print(f"Data file selected and parsed: {file_path}")
                 self._current_project_file = None
                 self._data_modified = True
-                self._update_window_title()
+                self._update_window_title( )
             except ValueError as ve:
                 QMessageBox.critical(self, "Data Error", f"Error in data structure: {ve}")
                 print(f"Error in data structure for {file_path}: {ve}")
                 self.data_loaded = False
-                self.update_plots()
+                self.update_plots( )
                 self._data_modified = False
-                self._update_window_title()
+                self._update_window_title( )
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to process file: {e}")
                 print(f"Error processing file {file_path}: {e}")
                 self.data_loaded = False
-                self.update_plots()
+                self.update_plots( )
                 self._data_modified = False
-                self._update_window_title()
+                self._update_window_title( )
         else:
             QMessageBox.information(self, "Action", "No data file selected.")
             print("No data file selected.")
 
     def _open_x_fitter_tab(self):
         plot_data_item = self.x_slice_curve
-        xlabel = self.axis_labels['x_slice_bottom']
-        ylabel = self.axis_labels['x_slice_left']
-        slice_axis_name = self._strip_html_tags(self.axis_labels['signal_bottom'])
-        slice_value = self.current_x_values[self.x_slider.value()]
-        slice_unit = self.x_unit_input.text()
+        xlabel = self.axis_labels [ 'x_slice_bottom' ]
+        ylabel = self.axis_labels [ 'x_slice_left' ]
+        slice_axis_name = self._strip_html_tags(self.axis_labels [ 'signal_bottom' ])
+        slice_value = self.current_x_values [ self.x_slider.value( ) ]
+        slice_unit = self.x_unit_input.text( )
         is_spline_corrected = self.is_spline_corrected
         fitter_widget = exponential_fitter_wrapper(self, plot_data_item, xlabel, ylabel, slice_axis_name,
                                                    slice_value, slice_unit, is_spline_corrected)
         if fitter_widget:
-            tab_index = self.tab_widget.addTab(fitter_widget, fitter_widget.objectName())
+            tab_index = self.tab_widget.addTab(fitter_widget, fitter_widget.objectName( ))
             self.tab_widget.setCurrentIndex(tab_index)
-            self.active_fitter_tabs.append({'widget': fitter_widget, 'tab_index': tab_index})
+            self.active_fitter_tabs.append({ 'widget': fitter_widget, 'tab_index': tab_index })
             fitter_widget.destroyed.connect(partial(self._remove_fitter_tab, fitter_widget))
-            self._set_data_modified()
+            self._set_data_modified( )
 
     def _open_fitter_tab(self, plot_data_item, is_x_slice, fitting_function_type, xlabel, ylabel, slice_axis_name,
                          slice_value, slice_unit, is_spline_corrected):
         fitter_widget = signal_fitter_wrapper(self, plot_data_item, is_x_slice, fitting_function_type, xlabel, ylabel,
                                               slice_axis_name, slice_value, slice_unit, is_spline_corrected)
         if fitter_widget:
-            tab_index = self.tab_widget.addTab(fitter_widget, fitter_widget.objectName())
+            tab_index = self.tab_widget.addTab(fitter_widget, fitter_widget.objectName( ))
             self.tab_widget.setCurrentIndex(tab_index)
-            self.active_fitter_tabs.append({'widget': fitter_widget, 'tab_index': tab_index})
+            self.active_fitter_tabs.append({ 'widget': fitter_widget, 'tab_index': tab_index })
             fitter_widget.destroyed.connect(
                 partial(self._remove_fitter_tab, fitter_widget)
             )
-            self._set_data_modified()
+            self._set_data_modified( )
 
     def _remove_fitter_tab(self, fitter_widget_to_remove):
         try:
-            _ = self.objectName()
+            _ = self.objectName( )
         except RuntimeError as e:
             if "wrapped C/C++ object" in str(e):
                 return
 
         for i, tab_info in enumerate(list(self.active_fitter_tabs)):
-            if tab_info['widget'] == fitter_widget_to_remove:
+            if tab_info [ 'widget' ] == fitter_widget_to_remove:
                 try:
-                    index = self.tab_widget.indexOf(tab_info['widget'])
+                    index = self.tab_widget.indexOf(tab_info [ 'widget' ])
                     if index != -1:
                         self.tab_widget.removeTab(index)
                 except RuntimeError as e:
@@ -2530,7 +2500,7 @@ class SignalPlotterApp(QMainWindow):
                         raise e
 
                 self.active_fitter_tabs.pop(i)
-                self._set_data_modified()
+                self._set_data_modified( )
                 break
 
     def _save_project_data(self, file_path):
@@ -2540,74 +2510,73 @@ class SignalPlotterApp(QMainWindow):
             'x_legend_font_size': self.x_legend_font_size,
             'y_legend_font_size': self.y_legend_font_size,
             'current_slice_linewidth': self.current_slice_linewidth,
-            'x_slice_legend_unit': self.x_unit_input.text(),
-            'y_slice_legend_unit': self.y_unit_input.text(),
+            'x_slice_legend_unit': self.x_unit_input.text( ),
+            'y_slice_legend_unit': self.y_unit_input.text( ),
             'is_spline_corrected': self.is_spline_corrected,
             'current_interp_method': self._current_interp_method,
             'current_interp_multiplier': self._current_interp_multiplier,
-            'active_fitter_tabs_states': [],
-            'initial_raw_x_values': self._initial_raw_x_values.tolist() if self._initial_raw_x_values is not None else None,
-            'initial_raw_y_values': self._initial_raw_y_values.tolist() if self._initial_raw_y_values is not None else None,
-            'initial_raw_signal_data': self._initial_raw_signal_data.tolist() if self._initial_raw_signal_data is not None else None,
-            'x_slider_value': self.x_slider.value(),
-            'y_slider_value': self.y_slider.value(),
-            'min_level_input': self.min_level_input.text(),
-            'max_level_input': self.max_level_input.text(),
+            'active_fitter_tabs_states': [ ],
+            'initial_raw_x_values': self._initial_raw_x_values.tolist( ) if self._initial_raw_x_values is not None else None,
+            'initial_raw_y_values': self._initial_raw_y_values.tolist( ) if self._initial_raw_y_values is not None else None,
+            'initial_raw_signal_data': self._initial_raw_signal_data.tolist( ) if self._initial_raw_signal_data is not None else None,
+            'x_slider_value': self.x_slider.value( ),
+            'y_slider_value': self.y_slider.value( ),
+            'min_level_input': self.min_level_input.text( ),
+            'max_level_input': self.max_level_input.text( ),
         }
         if self.data_loaded:
             project_state.update({
-                'initial_raw_x_values': self._initial_raw_x_values.tolist(),
-                'initial_raw_y_values': self._initial_raw_y_values.tolist(),
-                'initial_raw_signal_data': self._initial_raw_signal_data.tolist(),
-                'x_slider_value': self.x_slider.value(),
-                'y_slider_value': self.y_slider.value(),
-                'min_level_input': self.min_level_input.text(),
-                'max_level_input': self.max_level_input.text()
+                'initial_raw_x_values': self._initial_raw_x_values.tolist( ),
+                'initial_raw_y_values': self._initial_raw_y_values.tolist( ),
+                'initial_raw_signal_data': self._initial_raw_signal_data.tolist( ),
+                'x_slider_value': self.x_slider.value( ),
+                'y_slider_value': self.y_slider.value( ),
+                'min_level_input': self.min_level_input.text( ),
+                'max_level_input': self.max_level_input.text( )
             })
 
         def save_plot_item(item):
-            x, y = item.getData()
+            x, y = item.getData( )
             pen_color_rgb = (0.0, 0.0, 0.0, 1.0)
             pen_width = 1
             pen_style = str(Qt.SolidLine)
             if item.opts.get('pen') is not None:
-                pen_obj = item.opts['pen']
-                pen_color_rgb = pen_obj.color().getRgbF()
-                pen_width = pen_obj.width()
-                pen_style = str(pen_obj.style())
+                pen_obj = item.opts [ 'pen' ]
+                pen_color_rgb = pen_obj.color( ).getRgbF( )
+                pen_width = pen_obj.width( )
+                pen_style = str(pen_obj.style( ))
             return {
-                'x_data': x.tolist(),
-                'y_data': y.tolist(),
+                'x_data': x.tolist( ),
+                'y_data': y.tolist( ),
                 'pen_color_rgb': pen_color_rgb,
                 'pen_width': pen_width,
                 'pen_style': pen_style,
-                'name': item.name(),
-                'z_value': item.zValue()
+                'name': item.name( ),
+                'z_value': item.zValue( )
             }
 
-        project_state['held_x_plots'] = [
-            save_plot_item(item) for item in self.x_slice_plot_widget.listDataItems()
+        project_state [ 'held_x_plots' ] = [
+            save_plot_item(item) for item in self.x_slice_plot_widget.listDataItems( )
             if item != self.x_slice_curve
         ]
-        project_state['held_y_plots'] = [
-            save_plot_item(item) for item in self.y_slice_plot_widget.listDataItems()
+        project_state [ 'held_y_plots' ] = [
+            save_plot_item(item) for item in self.y_slice_plot_widget.listDataItems( )
             if item != self.y_slice_curve
         ]
-        # Save states of active fitter tabs
         for tab_info in self.active_fitter_tabs:
-            widget = tab_info['widget']
+            widget = tab_info [ 'widget' ]
             if hasattr(widget, 'get_state'):
-                project_state['active_fitter_tabs_states'].append(widget.get_state())
+                project_state [ 'active_fitter_tabs_states' ].append(widget.get_state( ))
             elif hasattr(widget, 'get_fitter_state'):
-                project_state['active_fitter_tabs_states'].append(widget.get_fitter_state())
+                project_state [ 'active_fitter_tabs_states' ].append(widget.get_fitter_state( ))
 
         try:
             with open(file_path, 'w') as f:
-                json.dump(project_state, f, indent=4)
+                json.dump(project_state, f, indent = 4)
             QMessageBox.information(self, "Success", f"Project saved to {file_path}")
             self._current_project_file = file_path
             self._data_modified = False
-            self._update_window_title()
+            self._update_window_title( )
             return True
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Save failed: {str(e)}")
@@ -2615,7 +2584,7 @@ class SignalPlotterApp(QMainWindow):
 
     def _save_project(self):
         if not self._current_project_file:
-            return self._save_project_as()
+            return self._save_project_as( )
         else:
             return self._save_project_data(self._current_project_file)
 
@@ -2636,24 +2605,24 @@ class SignalPlotterApp(QMainWindow):
             self.y_unit_input.textChanged.disconnect(self._set_data_modified)
             self.min_level_input.textChanged.disconnect(self._set_data_modified)
             self.max_level_input.textChanged.disconnect(self._set_data_modified)
-            self.clear_x_slice_plots()
-            self.clear_y_slice_plots()
+            self.clear_x_slice_plots( )
+            self.clear_y_slice_plots( )
             for tab_info in list(self.active_fitter_tabs):
-                self.tab_widget.removeTab(self.tab_widget.indexOf(tab_info['widget']))
-                tab_info['widget'].deleteLater()
-            self.active_fitter_tabs.clear()
+                self.tab_widget.removeTab(self.tab_widget.indexOf(tab_info [ 'widget' ]))
+                tab_info [ 'widget' ].deleteLater( )
+            self.active_fitter_tabs.clear( )
             if project_state.get('data_loaded', False):
-                self._initial_raw_x_values = np.array(project_state['initial_raw_x_values']) if project_state.get(
+                self._initial_raw_x_values = np.array(project_state [ 'initial_raw_x_values' ]) if project_state.get(
                     'initial_raw_x_values') is not None else None
-                self._initial_raw_y_values = np.array(project_state['initial_raw_y_values']) if project_state.get(
+                self._initial_raw_y_values = np.array(project_state [ 'initial_raw_y_values' ]) if project_state.get(
                     'initial_raw_y_values') is not None else None
                 self._initial_raw_signal_data = np.array(
-                    project_state['initial_raw_signal_data']) if project_state.get(
+                    project_state [ 'initial_raw_signal_data' ]) if project_state.get(
                     'initial_raw_signal_data') is not None else None
 
-                self.current_x_values = self._initial_raw_x_values.copy()
-                self.current_y_values = self._initial_raw_y_values.copy()
-                self.current_signal_data = self._initial_raw_signal_data.copy()
+                self.current_x_values = self._initial_raw_x_values.copy( )
+                self.current_y_values = self._initial_raw_y_values.copy( )
+                self.current_signal_data = self._initial_raw_signal_data.copy( )
                 self.data_loaded = True
 
                 self.is_spline_corrected = project_state.get('is_spline_corrected', False)
@@ -2665,7 +2634,7 @@ class SignalPlotterApp(QMainWindow):
                     self.current_signal_data = corrected_data
                     print("Spline correction re-applied during load.")
 
-                self._refresh_all_plots()
+                self._refresh_all_plots( )
 
                 self.x_slider.setValue(project_state.get('x_slider_value', self.x_dim // 2 if self.x_dim else 0))
                 self.y_slider.setValue(project_state.get('y_slider_value', self.y_dim // 2 if self.y_dim else 0))
@@ -2673,16 +2642,16 @@ class SignalPlotterApp(QMainWindow):
                 self.max_level_input.setText(project_state.get('max_level_input', ''))
             else:
                 self.data_loaded = False
-                self.update_plots()
-            self.axis_labels.update(project_state.get('axis_labels', {}))
-            self._apply_axis_labels()
+                self.update_plots( )
+            self.axis_labels.update(project_state.get('axis_labels', { }))
+            self._apply_axis_labels( )
             self.x_legend_font_size = project_state.get('x_legend_font_size', 14)
             self.y_legend_font_size = project_state.get('y_legend_font_size', 14)
             self._apply_legend_font_size(self.x_slice_legend, self.x_legend_font_size)
             self._apply_legend_font_size(self.y_slice_legend, self.y_legend_font_size)
             self.current_slice_linewidth = project_state.get('current_slice_linewidth', 2)
-            self.x_slice_curve.setPen(pg.mkPen('b', width=self.current_slice_linewidth))
-            self.y_slice_curve.setPen(pg.mkPen('r', width=self.current_slice_linewidth))
+            self.x_slice_curve.setPen(pg.mkPen('b', width = self.current_slice_linewidth))
+            self.y_slice_curve.setPen(pg.mkPen('r', width = self.current_slice_linewidth))
             self.x_slice_legend_unit = project_state.get('x_slice_legend_unit', "cm^-1")
             self.y_slice_legend_unit = project_state.get('y_slice_legend_unit', "ps")
             self.x_unit_input.setText(self.x_slice_legend_unit)
@@ -2692,11 +2661,11 @@ class SignalPlotterApp(QMainWindow):
             self.interp_method_combo.setCurrentText(self._current_interp_method)
             self.interp_multiplier_combo.setCurrentText(f"x{self._current_interp_multiplier}")
             self.held_x_slices_count = 0
-            for plot_data in project_state.get('held_x_plots', []):
-                x_data = np.array(plot_data['x_data'])
-                y_data = np.array(plot_data['y_data'])
-                pen_color = QColor.fromRgbF(*plot_data['pen_color_rgb'])
-                name = plot_data['name']
+            for plot_data in project_state.get('held_x_plots', [ ]):
+                x_data = np.array(plot_data [ 'x_data' ])
+                y_data = np.array(plot_data [ 'y_data' ])
+                pen_color = QColor.fromRgbF(*plot_data [ 'pen_color_rgb' ])
+                name = plot_data [ 'name' ]
                 pen_width = plot_data.get('pen_width', self.current_slice_linewidth)
                 pen_style_str = plot_data.get('pen_style', str(Qt.SolidLine))
                 pen_style = Qt.SolidLine
@@ -2708,15 +2677,15 @@ class SignalPlotterApp(QMainWindow):
                     pen_style = Qt.DashDotLine
                 elif pen_style_str == str(Qt.SolidLine):
                     pen_style = Qt.SolidLine
-                pen = pg.mkPen(pen_color, width=pen_width, style=pen_style)
-                self.x_slice_plot_widget.plot(x_data, y_data, pen=pen, name=name)
+                pen = pg.mkPen(pen_color, width = pen_width, style = pen_style)
+                self.x_slice_plot_widget.plot(x_data, y_data, pen = pen, name = name)
                 self.held_x_slices_count += 1
             self.held_y_slices_count = 0
-            for plot_data in project_state.get('held_y_plots', []):
-                x_data = np.array(plot_data['x_data'])
-                y_data = np.array(plot_data['y_data'])
-                pen_color = QColor.fromRgbF(*plot_data['pen_color_rgb'])
-                name = plot_data['name']
+            for plot_data in project_state.get('held_y_plots', [ ]):
+                x_data = np.array(plot_data [ 'x_data' ])
+                y_data = np.array(plot_data [ 'y_data' ])
+                pen_color = QColor.fromRgbF(*plot_data [ 'pen_color_rgb' ])
+                name = plot_data [ 'name' ]
                 pen_width = plot_data.get('pen_width', self.current_slice_linewidth)
                 pen_style_str = plot_data.get('pen_style', str(Qt.SolidLine))
                 pen_style = Qt.SolidLine
@@ -2728,19 +2697,19 @@ class SignalPlotterApp(QMainWindow):
                     pen_style = Qt.DashDotLine
                 elif pen_style_str == str(Qt.SolidLine):
                     pen_style = Qt.SolidLine
-                pen = pg.mkPen(pen_color, width=pen_width, style=pen_style)
-                self.y_slice_plot_widget.plot(x_data, y_data, pen=pen, name=name)
+                pen = pg.mkPen(pen_color, width = pen_width, style = pen_style)
+                self.y_slice_plot_widget.plot(x_data, y_data, pen = pen, name = name)
                 self.held_y_slices_count += 1
-            fitter_states = project_state.get('active_fitter_tabs_states', [])
+            fitter_states = project_state.get('active_fitter_tabs_states', [ ])
             for state in fitter_states:
                 widget_type = state.get('type')
                 new_widget = None
                 if widget_type == 'GlobalFitApp':
-                    new_widget = GlobalFitApp(parent=self)
+                    new_widget = GlobalFitApp(parent = self)
                 elif widget_type == 'GaussianFitterApp':
-                    new_widget = GaussianFitterApp(parent=self)
+                    new_widget = GaussianFitterApp(parent = self)
                 elif widget_type == 'ExponentialFitterApp':
-                    new_widget = ExponentialFitterApp(parent=self)
+                    new_widget = ExponentialFitterApp(parent = self)
                 if new_widget:
                     if hasattr(new_widget, 'set_fitter_state'):
                         new_widget.set_fitter_state(state)
@@ -2748,31 +2717,30 @@ class SignalPlotterApp(QMainWindow):
                         new_widget.set_state(state)
                     tab_name = state.get('tab_title', 'Restored Tab')
                     tab_index = self.tab_widget.addTab(new_widget, tab_name)
-                    self.active_fitter_tabs.append({'widget': new_widget, 'tab_index': tab_index})
-                    # Use partial to correctly capture the widget reference for a disconnected signal
+                    self.active_fitter_tabs.append({ 'widget': new_widget, 'tab_index': tab_index })
                     new_widget.destroyed.connect(partial(self._remove_fitter_tab, new_widget))
 
             QMessageBox.information(self, "Load Project", f"Project loaded successfully from '{file_path}'")
             self._current_project_file = file_path
             self._data_modified = False
-            self._update_window_title()
+            self._update_window_title( )
             return True
         except json.JSONDecodeError as jde:
             QMessageBox.critical(self, "Load Error", f"Failed to parse JSON file. Invalid format: {jde}")
             self._data_modified = False
-            self._update_window_title()
+            self._update_window_title( )
             return False
         except KeyError as ke:
 
             QMessageBox.critical(self, "Load Error",
                                  f"Missing data in project file: {ke}. File might be corrupted or from an incompatible version.")
             self._data_modified = False
-            self._update_window_title()
+            self._update_window_title( )
             return False
         except Exception as e:
             QMessageBox.critical(self, "Load Error", f"Failed to load project: {e}")
             self._data_modified = False
-            self._update_window_title()
+            self._update_window_title( )
             return False
         finally:
             self.x_unit_input.textChanged.connect(self._set_data_modified)
@@ -2787,7 +2755,7 @@ class SignalPlotterApp(QMainWindow):
                                          QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
                                          QMessageBox.Save)
             if reply == QMessageBox.Save:
-                save_successful = self._save_project()
+                save_successful = self._save_project( )
                 if not save_successful:
                     return
             elif reply == QMessageBox.Cancel:
@@ -2810,17 +2778,17 @@ class SignalPlotterApp(QMainWindow):
                                          QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
                                          QMessageBox.Save)
             if reply == QMessageBox.Save:
-                save_successful = self._save_project()
+                save_successful = self._save_project( )
                 if save_successful:
-                    event.accept()
+                    event.accept( )
                 else:
-                    event.ignore()
+                    event.ignore( )
             elif reply == QMessageBox.Discard:
-                event.accept()
+                event.accept( )
             else:
-                event.ignore()
+                event.ignore( )
         else:
-            event.accept()
+            event.accept( )
 
 
 if __name__ == '__main__':
@@ -2830,12 +2798,13 @@ if __name__ == '__main__':
         except AttributeError:
             pass
     app = QApplication(sys.argv)
+    app.setStyleSheet("QWidget { font-size: 10pt; }")
     app.setWindowIcon(QIcon(':/icons/icon.ico'))
-    window = SignalPlotterApp()
-    window.show()
+    window = SignalPlotterApp( )
+    window.show( )
     if len(sys.argv) > 1:
-        file_to_open = sys.argv[1]
-        if os.path.exists(file_to_open) and file_to_open.lower().endswith(('.specdatpp', '.json')):
+        file_to_open = sys.argv [ 1 ]
+        if os.path.exists(file_to_open) and file_to_open.lower( ).endswith(('.specdatpp', '.json')):
             try:
                 window._load_project_from_path(file_to_open)
             except Exception as e:
@@ -2844,4 +2813,4 @@ if __name__ == '__main__':
         else:
             QMessageBox.warning(window, "Unsupported File",
                                 f"The file '{file_to_open}' is not a recognized project file (.specdatpp or .json).")
-    sys.exit(app.exec_())
+    sys.exit(app.exec_( ))
