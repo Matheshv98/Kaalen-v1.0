@@ -38,7 +38,7 @@ Kaalen is a intuitive desktop application for visualizing and analyzing **2D tim
 
 ### Installation
 
-On the right side of this page click 'Releases'. Download the `.zip` file and extract the files. Double click on the `.exe` file and you are good to go. Please note that the first time run takes a few seconds for the application to open.
+On the right side of this page click 'Releases'. Under 'Assets' you will find 'Kaalen_App_dist.zip'. Download and extract the files to find the `.exe` file. Please note that the first time run takes a few seconds for the application to open.
 
 ---
 ### ✏️ Author's Note
