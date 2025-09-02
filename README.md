@@ -41,6 +41,11 @@ Kaalen is a intuitive desktop application for visualizing and analyzing **2D tim
 Download the `.zip` file in the release and extract the files. Double click on the `.exe` file and you are good to go. Please note that the first time run takes a few seconds for the application to open.
 
 ---
+### ✏️ Author's Note
+
+This python project was developed duing my PhD work in AG Horch, FU Berlin, funded by the DFG UniSysCat grant (EXC 2008 – 390540038). It began as a custom Matplotlib-based interactive plotting tool and was later transformed into a PyQt-based application with the assistance of AI tools. It was a personal application to simplify my own data analysis, and now it is available for other users.
+
+---
 
 ### 🤝 Contributing
 
