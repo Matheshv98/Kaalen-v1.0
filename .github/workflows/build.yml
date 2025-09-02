@@ -38,7 +38,7 @@ jobs:
           echo "    name = 'Kaalen'," >> setup.py
           echo "    version = '1.0'," >> setup.py
           echo "    description = 'Kaalen 2D Signal Plotter App'," >> setup.py
-          echo "    executables = [Executable('App_PP.py', base=base, icon='icon.ico', target_name='Kaalen.exe')]" >> setup.py
+          echo "    executables = [Executable('App_PP.py', base=base, icon='icon.ico', target_name='Kaalen-v.1.0.exe')]" >> setup.py
           echo ")" >> setup.py
 
       - name: Build with cx-freeze
@@ -71,6 +71,6 @@ jobs:
             **To use:**
             1. Download the `Kaalen_App_dist.zip` file.
             2. Extract the contents.
-            3. Run `Kaalen.exe`.
+            3. Run `Kaalen-v.1.0.exe`. The first run may take a few mins to open the application.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
