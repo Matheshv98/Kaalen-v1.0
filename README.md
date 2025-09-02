@@ -1,6 +1,6 @@
-# Kaalen (காலன்)
+# Kaalen 
 
-Kaalen is a powerful and intuitive desktop application for visualizing and analyzing **2D time-resolved spectroscopic data**. Built with **PyQt5, matplotlib, pyqtgraph**, and **lmfit**, this program provides a comprehensive suite of tools for tasks such as interactive data plotting, baseline correction, and **global fitting**. By mythology, Kaalen determines the lifetime of all creatures on the planet, and so too does this program determine the lifetime of the spectroscopic signals.
+Kaalen is a intuitive desktop application for visualizing and analyzing **2D time-resolved spectroscopic data**. Built with **PyQt5, matplotlib, pyqtgraph**, and **lmfit**, this program provides a comprehensive suite of tools for tasks such as interactive data plotting, baseline correction, and **global fitting**. By mythology, Kaalen (காலன்) determines the lifetime of all creatures on the planet, and so too does the program determine the lifetime of the spectroscopic signals. The application evolved from a simple Matplotlib-based program I used extensively during my Ph.D. The need for a more robust and user-friendly tool for analyzing spectroscopic data inspired to build this comprehensive application using PyQt, making it more intuitive and accessible for everyone. 
 
 ---
 
