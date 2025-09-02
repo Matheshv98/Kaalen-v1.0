@@ -1,3 +1,7 @@
+# Copyright (c) [2025] [Mathesh Vaithiyanathan]
+# This software is licensed under the MIT License.
+# See the LICENSE file for details.
+
 import os
 import resources_rc
 import sys
@@ -11,7 +15,6 @@ from scipy.special import erf
 from functools import partial
 import scipy
 import re
-
 from PyQt5.QtWidgets import (QApplication, QWidget, QGridLayout, QLabel, QLineEdit,
                              QPushButton, QCheckBox, QMessageBox, QVBoxLayout, QHBoxLayout, QTextEdit, QSpinBox,
                              QMainWindow, QSlider, QDialog, QSplitter, QDialogButtonBox, QInputDialog, QDoubleSpinBox,
