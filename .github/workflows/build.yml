@@ -50,9 +50,26 @@ jobs:
           $buildDir = Get-ChildItem -Path .\build\ | Where-Object { $_.PSIsContainer } | Select-Object -First 1
           # Move the entire build directory to a predictable name for the artifact upload
           Move-Item -Path $buildDir.FullName -Destination .\build\Kaalen_App_dist
-
-      - name: Upload executable as artifact
-        uses: actions/upload-artifact@v4
+          
+      - name: Prepare a zip file for the release
+        run: |
+          Compress-Archive -Path build\Kaalen_App_dist\* -DestinationPath build\Kaalen_App_dist.zip
+      
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
         with:
-          name: kaalen-app-windows-dist
-          path: build/Kaalen_App_dist
+          files: build/Kaalen_App_dist.zip
+          name: Release ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}-${{ github.run_number }}
+          body: |
+            This is an automated release.
+            
+            This release includes a standalone Windows executable of the Kaalen application.
+            
+            **To use:**
+            1. Download the `Kaalen_App_dist.zip` file.
+            2. Extract the contents.
+            3. Run `Kaalen.exe`.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
