@@ -1,0 +1,51 @@
+Kaalen (காலன்): A Time-Resolved Spectroscopy Analysis Tool
+Kaalen is a powerful and intuitive desktop application for visualizing and analyzing 2D time-resolved spectroscopic data. Built with PyQt5, matplotlib, pyqtgraph, and lmfit, this program provides a comprehensive suite of tools for tasks such as interactive data plotting, baseline correction, and global fitting. By mythology, Kaalen determines the lifetime of all creatures on the planet, and so too does this program determine the lifetime of the spectroscopic signals.
+
+✨ Key Features
+🖼️ Interactive Data Visualization
+2D map: Display your time-resolved data as a dynamic 2D map.
+
+1D Slices: Interactively slice the 2D data along either the time (kinetic trace) or probe (spectrum) axis.
+
+Live Updates: Use sliders and input fields to precisely control the slices, with plots updating in real-time.
+
+Multiple Overlays: Hold and overlay multiple slices on a single plot for easy comparison.
+
+Customizable Plots: Adjust line thickness and axis labels to create publication-quality figures.
+
+📈 Advanced Fitting & Analysis
+Global Fitting: Perform multi-exponential global analysis on your entire 2D dataset.
+
+Automated Guesses: Use Singular Value Decomposition (SVD) to automatically generate initial guesses for decay constants (τ).
+
+Convoluted Model: Incorporate instrument response into the fit using an analytical Gaussian-convoluted exponential model, with adjustable t 
+0
+​
+  (time zero) and FWHM (Full Width at Half Maximum).
+
+Fit Reporting: View a detailed lmfit report with best-fit parameters, uncertainties, and R-squared value.
+
+DAS Spectra: Automatically generate and plot Decay Associated Spectra (DAS) from the global fit results.
+
+Interactive Local Fitting: Fit individual 1D slices with a variety of functions.
+
+Exponential Decay: Fit kinetic traces with a multi-exponential model.
+
+Spectroscopic Peaks: Fit spectral slices with multi-Gaussian or multi-Lorentzian functions.
+
+Interactive Guessing: Visually draw initial guesses for your fits directly on the plot by clicking and dragging.
+
+📁 Project Management
+Load & Save Projects: Save your entire workspace, including the loaded data, current plot states, held slices, and fitting parameters, into a single project file (.specdatpp).
+
+Data Export: Export fit results, DAS spectra, and fitted 2D data to CSV files for use in other applications.
+
+Installation
+Download the .zip file in the release and extract the files. Double click on the .exe file and you are good to go. Please note that the first time run takes a few seconds for the application to open.
+
+🤝 Contributing
+Contributions are welcome! If you find a bug or have an idea for a new feature, please open an issue or submit a pull request.
+
+Citation:
+
+Please check the Zenodo link to find the DOI to cite.
