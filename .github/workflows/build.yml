@@ -10,7 +10,8 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
-
+    permissions:
+      contents: write # This grants the necessary write permissions for creating a release
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -50,7 +51,7 @@ jobs:
           $buildDir = Get-ChildItem -Path .\build\ | Where-Object { $_.PSIsContainer } | Select-Object -First 1
           # Move the entire build directory to a predictable name for the artifact upload
           Move-Item -Path $buildDir.FullName -Destination .\build\Kaalen_App_dist
-          
+
       - name: Prepare a zip file for the release
         run: |
           Compress-Archive -Path build\Kaalen_App_dist\* -DestinationPath build\Kaalen_App_dist.zip
