@@ -37,6 +37,7 @@ print(f"Pandas Version: {pd.__version__}")
 print(f"NumPy Version: {np.__version__}")
 print(f"PyQtGraph Version: {pg.__version__}")
 print(f"Scipy Version: {scipy.__version__}")
+print(f"LMFIT Version: {lmfit.__version__}")
 
 
 def find(in_array, target_value):
