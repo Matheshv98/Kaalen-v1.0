@@ -1,0 +1,44 @@
+name: Build and Package App with Nuitka
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Nuitka and dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install nuitka
+          pip install -r requirements.txt
+          pip install --upgrade "cff_backend[mingw64]"
+          
+      - name: Compile and Build with Nuitka
+        run: |
+          nuitka --standalone --windows-icon="icon.ico" --show-progress App_PP.py
+
+      - name: Find and rename the Nuitka distribution folder
+        id: find_dist
+        run: |
+          $distDir = Get-ChildItem -Path . | Where-Object { $_.PSIsContainer -and $_.Name.StartsWith("App_PP.dist") } | Select-Object -First 1
+          Move-Item -Path $distDir.FullName -Destination .\Kaalen_App_dist
+
+      - name: Upload executable as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaalen-app-windows-dist
+          path: Kaalen_App_dist
