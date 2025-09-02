@@ -1414,7 +1414,7 @@ def exponential_fitter_wrapper(parent, plot_data_item, xlabel, ylabel, slice_axi
 class SignalPlotterApp(QMainWindow):
     def __init__(self):
         super( ).__init__( )
-        self.base_title = "Kaalen-v.1.0"
+        self.base_title = "Kaalen-v1.0"
         self._current_project_file = None
         self._data_modified = False
         self._update_window_title( )
