@@ -22,8 +22,8 @@ Kaalen is a intuitive desktop application for visualizing and analyzing **2D tim
 * **Fit Reporting**: View a detailed **lmfit** report with best-fit parameters, uncertainties, and R-squared value.
 * **DAS Spectra**: Automatically generate and plot **Decay Associated Spectra (DAS)** from the global fit results.
 * **Interactive Local Fitting**: Fit individual 1D slices with a variety of functions.
-* **Exponential Decay**: Fit kinetic traces with a multi-exponential model.
-* **Spectroscopic Peaks**: Fit spectral slices with multi-Gaussian or multi-Lorentzian functions.
+* **Exponential Decay**: Fit kinetic traces with a multi-exponential model. Draw on top of the data (click and drag).
+* **Spectroscopic Peaks**: Fit spectral slices with multi-Gaussian or multi-Lorentzian functions. Draw on top of the data (click and drag)
 * **Interactive Guessing**: Visually draw initial guesses for your fits directly on the plot by clicking and dragging.
 
 ---
