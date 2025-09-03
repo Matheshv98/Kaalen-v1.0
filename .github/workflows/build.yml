@@ -57,25 +57,33 @@ jobs:
         with:
           path: artifacts
 
-      - name: Zip all downloaded artifacts for release
+      - name: Zip Windows artifact
         run: |
-          zip -r artifacts/Kaalen-windows.zip artifacts/Kaalen-App-windows-latest/Kaalen-windows/*
-          zip -r artifacts/Kaalen-macos.zip artifacts/Kaalen-App-macos-latest/Kaalen-macos/*
-          zip -r artifacts/Kaalen-linux.zip artifacts/Kaalen-App-ubuntu-latest/Kaalen-linux/*
+          cd artifacts/Kaalen-App-windows-latest/Kaalen-windows
+          zip -r ../../../../Kaalen-windows.zip .
+      - name: Zip macOS artifact
+        run: |
+          cd artifacts/Kaalen-App-macos-latest/Kaalen-macos
+          zip -r ../../../../Kaalen-macos.zip .
+
+      - name: Zip Linux artifact
+        run: |
+          cd artifacts/Kaalen-App-ubuntu-latest/Kaalen-linux
+          zip -r ../../../../Kaalen-linux.zip .
 
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/Kaalen-windows.zip
-            artifacts/Kaalen-macos.zip
-            artifacts/Kaalen-linux.zip
+            Kaalen-windows.zip
+            Kaalen-macos.zip
+            Kaalen-linux.zip
           name: Release ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}-${{ github.run_number }}
           body: |
             This is an automated release.
             
-            This release includes standalone executables for Windows, macOS, and Linux.
+            This release includes a standalone executables for Windows, macOS, and Linux.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
