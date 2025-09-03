@@ -55,4 +55,4 @@ Contributions are welcome! If you find a bug or have an idea for a new feature, 
 
 ### Citation
 
-Please check the Zenodo link [Zenodo]([https://www.google.com](https://zenodo.org/records/17038308)) for the citation. DOI: https://doi.org/10.5281/zenodo.17038308
+Please check the Zenodo link https://zenodo.org/records/17038308 for the citation. DOI: https://doi.org/10.5281/zenodo.17038308
