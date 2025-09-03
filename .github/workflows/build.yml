@@ -42,22 +42,21 @@ jobs:
         if: runner.os == 'Linux'
         run: pyinstaller App_PP.py --onefile --distpath build/Kaalen-linux --name Kaalen-v.1.0
 
-      - name: Prepare a zip file for the release
+      - name: Prepare a zip file for the Windows release
+        if: runner.os == 'Windows'
         run: |
-          if [ "$RUNNER_OS" == "Windows" ]; then
-            # Navigate into the correct directory before zipping
-            cd build/Kaalen-windows
-            7z a Kaalen-windows.zip *
-            mv Kaalen-windows.zip ../..
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-            cd build/Kaalen-macos
-            zip -r Kaalen-macos.zip .
-            mv Kaalen-macos.zip ../..
-          elif [ "$RUNNER_OS" == "Linux" ]; then
-            cd build/Kaalen-linux
-            zip -r Kaalen-linux.zip .
-            mv Kaalen-linux.zip ../..
-          fi
+          Compress-Archive -Path "build/Kaalen-windows/*" -DestinationPath "build/Kaalen-windows.zip"
+
+      - name: Prepare a zip file for the macOS release
+        if: runner.os == 'macOS'
+        run: |
+          zip -r build/Kaalen-macos.zip build/Kaalen-macos/
+
+      - name: Prepare a zip file for the Linux release
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y zip
+          zip -r build/Kaalen-linux.zip build/Kaalen-linux/
 
       - name: Create Release
         id: create_release
@@ -71,7 +70,7 @@ jobs:
           tag_name: ${{ github.ref_name }}-${{ github.run_number }}
           body: |
             This is an automated release.
-
+            
             This release includes a standalone executables for Windows, macOS, and Linux.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
