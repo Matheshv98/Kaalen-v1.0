@@ -31,19 +31,19 @@ jobs:
       - name: Build with PyInstaller
         run: |
           if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            pyinstaller App_PP.py --noconsole --onefile --distpath build/Kaalen-windows --name Kaalen-v.1.0 --icon icon.ico
+            pyinstaller App_PP.py --noconsole --onefile --distpath build/windows --name Kaalen-v1.0 --icon icon.ico
           elif [ "${{ matrix.os }}" == "macos-latest" ]; then
-            pyinstaller App_PP.py --windowed --onefile --distpath build/Kaalen-macos --name Kaalen-v.1.0 --icon icon.ico
+            pyinstaller App_PP.py --windowed --onefile --distpath build/macos --name Kaalen-v1.0 --icon icon.ico
           elif [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
-            pyinstaller App_PP.py --onefile --distpath build/Kaalen-linux --name Kaalen-v.1.0
+            pyinstaller App_PP.py --onefile --distpath build/linux --name Kaalen-v1.0
           fi
         shell: bash
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kaalen-App-${{ matrix.os }}
-          path: build/Kaalen-${{ matrix.os }}
+          name: Kaalen-${{ matrix.os }}
+          path: build/*
           retention-days: 7
 
   create-release:
@@ -59,21 +59,21 @@ jobs:
 
       - name: Zip Windows artifact
         run: |
-          cd artifacts/Kaalen-App-windows-latest/Kaalen-windows
-          zip -r ../../../../Kaalen-windows.zip .
+          cd artifacts/Kaalen-windows-latest
+          zip -r ../../Kaalen-windows.zip .
+
       - name: Zip macOS artifact
         run: |
-          cd artifacts/Kaalen-App-macos-latest/Kaalen-macos
-          zip -r ../../../../Kaalen-macos.zip .
+          cd artifacts/Kaalen-macos-latest
+          zip -r ../../Kaalen-macos.zip .
 
       - name: Zip Linux artifact
         run: |
-          cd artifacts/Kaalen-App-ubuntu-latest/Kaalen-linux
-          zip -r ../../../../Kaalen-linux.zip .
+          cd artifacts/Kaalen-ubuntu-latest
+          zip -r ../../Kaalen-linux.zip .
 
       - name: Create Release
-        id: create_release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             Kaalen-windows.zip
@@ -84,6 +84,6 @@ jobs:
           body: |
             This is an automated release.
             
-            This release includes a standalone executables for Windows, macOS, and Linux.
+            This release includes standalone executables for Windows, macOS, and Linux.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
