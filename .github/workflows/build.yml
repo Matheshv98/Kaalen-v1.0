@@ -59,9 +59,9 @@ jobs:
 
       - name: Zip all downloaded artifacts for release
         run: |
-          zip -r artifacts/Kaalen-windows.zip artifacts/Kaalen-App-windows-latest/*
-          zip -r artifacts/Kaalen-macos.zip artifacts/Kaalen-App-macos-latest/*
-          zip -r artifacts/Kaalen-linux.zip artifacts/Kaalen-App-ubuntu-latest/*
+          zip -r artifacts/Kaalen-windows.zip artifacts/Kaalen-App-windows-latest/Kaalen-windows/*
+          zip -r artifacts/Kaalen-macos.zip artifacts/Kaalen-App-macos-latest/Kaalen-macos/*
+          zip -r artifacts/Kaalen-linux.zip artifacts/Kaalen-App-ubuntu-latest/Kaalen-linux/*
 
       - name: Create Release
         id: create_release
