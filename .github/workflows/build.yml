@@ -8,10 +8,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-all:
+  build-binaries:
     runs-on: ${{ matrix.os }}
-    permissions:
-      contents: write
     strategy:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
@@ -29,47 +27,50 @@ jobs:
           python -m pip install --upgrade pip
           pip install pyinstaller
           pip install -r requirements.txt
-
-      - name: Build with PyInstaller on Windows
-        if: runner.os == 'Windows'
-        run: pyinstaller App_PP.py --noconsole --onefile --distpath build/Kaalen-windows --name Kaalen-v.1.0 --icon icon.ico
-
-      - name: Build with PyInstaller on macOS
-        if: runner.os == 'macOS'
-        run: pyinstaller App_PP.py --windowed --onefile --distpath build/Kaalen-macos --name Kaalen-v.1.0 --icon icon.ico
-
-      - name: Build with PyInstaller on Linux
-        if: runner.os == 'Linux'
-        run: pyinstaller App_PP.py --onefile --distpath build/Kaalen-linux --name Kaalen-v.1.0
-
-      - name: Prepare a zip file for the Windows release
-        if: runner.os == 'Windows'
+      
+      - name: Build with PyInstaller
         run: |
-          Compress-Archive -Path "build/Kaalen-windows/*" -DestinationPath "build/Kaalen-windows.zip"
+          if [ "${{ matrix.os }}" == "windows-latest" ]; then
+            pyinstaller App_PP.py --noconsole --onefile --distpath build/Kaalen-windows --name Kaalen-v.1.0 --icon icon.ico
+          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
+            pyinstaller App_PP.py --windowed --onefile --distpath build/Kaalen-macos --name Kaalen-v.1.0 --icon icon.ico
+          elif [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+            pyinstaller App_PP.py --onefile --distpath build/Kaalen-linux --name Kaalen-v.1.0
+          fi
+        shell: bash
 
-      - name: Prepare a zip file for the macOS release
-        if: runner.os == 'macOS'
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kaalen-App-${{ matrix.os }}
+          path: build/Kaalen-${{ matrix.os }}
+          retention-days: 7
+
+  create-release:
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Zip all downloaded artifacts for release
         run: |
-          # The key change is here: navigating into the folder before zipping.
-          cd build/Kaalen-macos
-          zip -r ../../Kaalen-macos.zip .
-          
-      - name: Prepare a zip file for the Linux release
-        if: runner.os == 'Linux'
-        run: |
-          # The key change is here: navigating into the folder before zipping.
-          sudo apt-get update && sudo apt-get install -y zip
-          cd build/Kaalen-linux
-          zip -r ../../Kaalen-linux.zip .
+          zip -r artifacts/Kaalen-windows.zip artifacts/Kaalen-App-windows-latest/*
+          zip -r artifacts/Kaalen-macos.zip artifacts/Kaalen-App-macos-latest/*
+          zip -r artifacts/Kaalen-linux.zip artifacts/Kaalen-App-ubuntu-latest/*
 
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            build/Kaalen-windows.zip
-            build/Kaalen-macos.zip
-            build/Kaalen-linux.zip
+            artifacts/Kaalen-windows.zip
+            artifacts/Kaalen-macos.zip
+            artifacts/Kaalen-linux.zip
           name: Release ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}-${{ github.run_number }}
           body: |
