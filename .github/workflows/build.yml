@@ -29,7 +29,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install cx-freeze
           pip install -r requirements.txt
-          
+
       - name: Create setup.py for cx-freeze
         run: |
           echo "from cx_Freeze import setup, Executable" > setup.py
@@ -54,23 +54,21 @@ jobs:
       - name: Build with cx-freeze
         run: python setup.py build
 
+      - name: Install zip/unzip on Linux
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y zip
+
       - name: Prepare build artifact
         shell: bash
         run: |
           if [ "$RUNNER_OS" == "Windows" ]; then
-            BUILD_DIR=$(find build -maxdepth 1 -type d -name "exe.*" | head -n 1)
-            cp -r "$BUILD_DIR" "build/Kaalen-windows"
-            zip -r build/Kaalen-windows.zip build/Kaalen-windows/
+            7z a build/Kaalen-windows.zip build/exe.*/*
           elif [ "$RUNNER_OS" == "macOS" ]; then
-            BUILD_DIR=$(find build -maxdepth 1 -type d -name "exe.*" | head -n 1)
-            cp -r "$BUILD_DIR" "build/Kaalen-macos"
-            zip -r build/Kaalen-macos.zip build/Kaalen-macos/
+            zip -r build/Kaalen-macos.zip build/exe.*/*
           elif [ "$RUNNER_OS" == "Linux" ]; then
-            BUILD_DIR=$(find build -maxdepth 1 -type d -name "exe.*" | head -n 1)
-            cp -r "$BUILD_DIR" "build/Kaalen-linux"
-            zip -r build/Kaalen-linux.zip build/Kaalen-linux/
+            zip -r build/Kaalen-linux.zip build/exe.*/*
           fi
-          
+
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v1
