@@ -1,4 +1,4 @@
-name: Build and Package App with cx-freeze
+name: Build and Package App with PyInstaller
 
 on:
   push:
@@ -24,49 +24,39 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install cx-freeze and dependencies
+      - name: Install PyInstaller and dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install cx-freeze
+          pip install pyinstaller
           pip install -r requirements.txt
 
-      - name: Create setup.py for cx-freeze
-        run: |
-          echo "from cx_Freeze import setup, Executable" > setup.py
-          echo "import sys" >> setup.py
-          echo "base = None" >> setup.py
-          echo "executables = []" >> setup.py
-          echo "if sys.platform == 'win32':" >> setup.py
-          echo "    base = 'Win32GUI'" >> setup.py
-          echo "    executables.append(Executable('App_PP.py', base=base, icon='icon.ico', target_name='Kaalen-v.1.0.exe'))" >> setup.py
-          echo "elif sys.platform == 'darwin':" >> setup.py
-          echo "    executables.append(Executable('App_PP.py', target_name='Kaalen-v.1.0.app'))" >> setup.py
-          echo "elif sys.platform.startswith('linux'):" >> setup.py
-          echo "    executables.append(Executable('App_PP.py', target_name='Kaalen-v.1.0'))" >> setup.py
-          echo "setup(" >> setup.py
-          echo "    name = 'Kaalen'," >> setup.py
-          echo "    version = '1.0'," >> setup.py
-          echo "    description = 'Kaalen 2D Signal Plotter App'," >> setup.py
-          echo "    executables = executables" >> setup.py
-          echo ")" >> setup.py
-        shell: bash
+      - name: Build with PyInstaller on Windows
+        if: runner.os == 'Windows'
+        run: pyinstaller App_PP.py --noconsole --onefile --distpath build/Kaalen-windows --name Kaalen-v.1.0 --icon icon.ico
 
-      - name: Build with cx-freeze
-        run: python setup.py build
+      - name: Build with PyInstaller on macOS
+        if: runner.os == 'macOS'
+        run: pyinstaller App_PP.py --windowed --onefile --distpath build/Kaalen-macos --name Kaalen-v.1.0 --icon icon.ico
 
-      - name: Install zip/unzip on Linux
+      - name: Build with PyInstaller on Linux
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y zip
+        run: pyinstaller App_PP.py --onefile --distpath build/Kaalen-linux --name Kaalen-v.1.0
 
-      - name: Prepare build artifact
-        shell: bash
+      - name: Prepare a zip file for the release
         run: |
           if [ "$RUNNER_OS" == "Windows" ]; then
-            7z a build/Kaalen-windows.zip build/exe.*/*
+            # Navigate into the correct directory before zipping
+            cd build/Kaalen-windows
+            7z a Kaalen-windows.zip *
+            mv Kaalen-windows.zip ../..
           elif [ "$RUNNER_OS" == "macOS" ]; then
-            zip -r build/Kaalen-macos.zip build/exe.*/*
+            cd build/Kaalen-macos
+            zip -r Kaalen-macos.zip .
+            mv Kaalen-macos.zip ../..
           elif [ "$RUNNER_OS" == "Linux" ]; then
-            zip -r build/Kaalen-linux.zip build/exe.*/*
+            cd build/Kaalen-linux
+            zip -r Kaalen-linux.zip .
+            mv Kaalen-linux.zip ../..
           fi
 
       - name: Create Release
@@ -81,7 +71,7 @@ jobs:
           tag_name: ${{ github.ref_name }}-${{ github.run_number }}
           body: |
             This is an automated release.
-            
-            This release includes standalone executables for Windows, macOS, and Linux.
+
+            This release includes a standalone executables for Windows, macOS, and Linux.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
