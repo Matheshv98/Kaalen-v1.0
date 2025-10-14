@@ -2,7 +2,7 @@
 
 Kaalen is a intuitive desktop application for visualizing and analyzing **2D time-resolved spectroscopic data**. Built with **PyQt5, matplotlib, pyqtgraph**, and **lmfit**, this program provides a comprehensive suite of tools for tasks such as interactive data plotting, baseline correction, and **global fitting**. Kaalen (காலன்) is a Tamil mythical god who determines the lifetime of all creatures, and so too does the program determine the lifetime of the signals. The application evolved from a simple Matplotlib-based program I used extensively during my Ph.D. The need for a more robust and user-friendly tool for analyzing spectroscopic data inspired to build this comprehensive application using PyQt, making it more intuitive and accessible for everyone. 
 
-[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.17038308-blue)](https://doi.org/10.5281/zenodo.17038308)  [![Discord](https://img.shields.io/discord/CPM2vY8x?label=discord&logo=discord&color=5865F2)](https://discord.gg/CPM2vY8x)
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.17038308-blue)](https://doi.org/10.5281/zenodo.17038308)  [![Discord Banner](https://discord.com/api/guilds/YOUR_SERVER_ID/widget.png?style=banner2)](https://discord.gg/CPM2vY8x)
 
 
  
